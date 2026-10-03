@@ -20,8 +20,15 @@ jobs:
         with:
           global-json-file: global.json
 
+      # 失敗したときは、エラーの行を GitHub の画面に出す
       - name: Build
-        run: dotnet build src/QuantScope.App --configuration Release
+        shell: pwsh
+        run: |
+          dotnet build src/QuantScope.App --configuration Release 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            Select-String -Path build.log -Pattern 'error' | Select-Object -First 20 | ForEach-Object { Write-Output "::error::$($_.Line.Trim())" }
+            exit 1
+          }
 
       - name: Test
         run: dotnet test --project tests/QuantScope.Tests --configuration Release
