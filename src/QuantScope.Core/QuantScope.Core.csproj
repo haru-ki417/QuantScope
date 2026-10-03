@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>QuantScope.Core</RootNamespace>
+    <!-- CA1716: 「Step」は VB の予約語と同じ名前だが、C# からしか使わない -->
+    <NoWarn>$(NoWarn);CA1716</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="fo-dicom" Version="5.2.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="QuantScope.Tests" />
+  </ItemGroup>
+
+</Project>

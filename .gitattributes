@@ -1,0 +1,9 @@
+* text=auto
+*.cs text eol=crlf
+*.xaml text eol=crlf
+*.csproj text eol=crlf
+*.slnx text eol=crlf
+*.ino text eol=lf
+*.yml text eol=lf
+*.png binary
+*.ico binary

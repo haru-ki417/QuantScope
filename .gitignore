@@ -1,0 +1,24 @@
+# ---- 秘密情報
+appsettings.Local.json
+*.local.json
+secrets.json
+*.pfx
+.env
+
+# ---- 患者・研究の画像（実データは公開しない）
+*.dcm
+DICOMDIR
+samples/
+exports/
+!tests/**/fixtures/**
+
+# ---- Visual Studio / .NET
+.vs/
+.idea/
+bin/
+obj/
+*.user
+*.suo
+[Pp]ublish/
+TestResults/
+snapshots/
