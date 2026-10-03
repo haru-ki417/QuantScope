@@ -18,6 +18,9 @@ public enum OverlayColoring
 
     /// <summary>粒ごとに違う色で（くっついた粒が分かれたかを見やすい）</summary>
     PerObject,
+
+    /// <summary>陽性はマゼンタ、陰性は水色</summary>
+    Classified,
 }
 
 /// <summary>
@@ -28,6 +31,8 @@ public static class DisplayRenderer
 {
     public const uint MaskArgb = 0xFFFF5FAA;
     public const uint SelectedArgb = 0xFF45D19A;
+    public const uint NegativeArgb = 0xFF4CC9F0;
+    public const uint ExcludedArgb = 0xFF9AA5AC;
 
     private static readonly uint[][] Luts =
     [
@@ -107,8 +112,11 @@ public static class DisplayRenderer
         return outb;
     }
 
-    /// <summary>計測した粒を色で示す。selectedId の粒はミントの緑で強調する。</summary>
-    public static byte[] LabelOverlay(LabelImage labels, OverlayColoring coloring, int selectedId = 0)
+    /// <summary>
+    /// 計測した粒を色で示す。selectedId の粒はミントの緑で強調する。
+    /// Classified のときは positive[id] が true の粒をマゼンタ、false の粒を水色にする。
+    /// </summary>
+    public static byte[] LabelOverlay(LabelImage labels, OverlayColoring coloring, int selectedId = 0, IReadOnlyList<bool>? positive = null)
     {
         ArgumentNullException.ThrowIfNull(labels);
         int w = labels.Width, h = labels.Height;
@@ -122,11 +130,44 @@ public static class DisplayRenderer
                 int id = l[i];
                 if (id == 0) continue;
                 bool edge = x == 0 || y == 0 || x == w - 1 || y == h - 1 || l[i - 1] != id || l[i + 1] != id || l[i - w] != id || l[i + w] != id;
-                uint c = id == selectedId ? SelectedArgb : coloring == OverlayColoring.PerObject ? ObjectColor(id) : MaskArgb;
+                uint c = id == selectedId ? SelectedArgb
+                    : coloring == OverlayColoring.PerObject ? ObjectColor(id)
+                    : coloring == OverlayColoring.Classified && positive is not null && id < positive.Count ? (positive[id] ? MaskArgb : NegativeArgb)
+                    : MaskArgb;
                 Put(outb, i * 4, c, edge ? 255 : id == selectedId ? 150 : 100);
             }
         });
         return outb;
+    }
+
+    /// <summary>手で除いた粒を、灰色の点線のふちで重ねる（除いたことが分かるように）</summary>
+    public static void AddExcluded(byte[] overlay, Mask excluded)
+    {
+        ArgumentNullException.ThrowIfNull(overlay);
+        ArgumentNullException.ThrowIfNull(excluded);
+        int w = excluded.Width, h = excluded.Height;
+        if (overlay.Length != w * h * 4) throw new ArgumentException("大きさが違います。", nameof(overlay));
+        var b = excluded.Bits;
+        Parallel.For(0, h, y =>
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = (y * w) + x;
+                if (!b[i]) continue;
+                bool edge = x == 0 || y == 0 || x == w - 1 || y == h - 1 || !b[i - 1] || !b[i + 1] || !b[i - w] || !b[i + w];
+                if (edge) Put(overlay, i * 4, ExcludedArgb, ((x + y) / 2) % 2 == 0 ? 255 : 60);
+                else if ((x + y) % 6 == 0) Put(overlay, i * 4, ExcludedArgb, 140);
+            }
+        });
+    }
+
+    /// <summary>粒の番号ごとの陽性（番号 0 は使わない）</summary>
+    public static bool[] PositiveById(IReadOnlyList<Particle> particles)
+    {
+        ArgumentNullException.ThrowIfNull(particles);
+        var a = new bool[particles.Count == 0 ? 1 : particles.Max(p => p.Id) + 1];
+        foreach (var p in particles) a[p.Id] = p.Positive == true;
+        return a;
     }
 
     /// <summary>画像の上に重ね合わせを合成する（保存用。opacity は重ね合わせの濃さ 0〜1）</summary>

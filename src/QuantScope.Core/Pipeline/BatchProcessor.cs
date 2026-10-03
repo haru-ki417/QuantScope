@@ -75,6 +75,6 @@ public static class BatchProcessor
     {
         var ok = results.Where(r => r.Result is not null).ToList();
         var first = ok.FirstOrDefault()?.Result?.Summary;
-        return CsvExport.Particles(ok.SelectMany(r => r.Result!.Particles.Select(p => ((string?)r.File, p))), first?.LengthUnit ?? "px", first?.AreaUnit ?? "px²");
+        return CsvExport.Particles(ok.SelectMany(r => r.Result!.Particles.Select(p => ((string?)r.File, p))), first?.LengthUnit ?? "px", first?.AreaUnit ?? "px²", first?.IntensityLabel ?? "明るさ");
     }
 }

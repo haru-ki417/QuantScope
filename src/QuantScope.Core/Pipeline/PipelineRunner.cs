@@ -90,9 +90,9 @@ public static class PipelineRunner
 
     /// <summary>
     /// 最後の状態のマスクを計測する。マスクがなければ null（二値化の手順がない）。
-    /// region は解析する範囲（今の画像の座標）。
+    /// region は解析する範囲、exclude は手で除く粒の点（どちらも今の画像の座標）。
     /// </summary>
-    public static AnalysisResult? Analyze(PipelineState state, MeasureSettings settings, Roi? region = null)
+    public static AnalysisResult? Analyze(PipelineState state, MeasureSettings settings, Roi? region = null, IReadOnlyList<PointD>? exclude = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(settings);
@@ -100,7 +100,13 @@ public static class PipelineRunner
         var source = settings.IntensityFromOriginal ? state.Original : state.Image;
         // 白黒にした画像などは大きさが同じ。切り抜いた場合も Original は同じ形に揃えてある
         if (source.Width != state.Mask.Width || source.Height != state.Mask.Height) source = state.Image;
+        var measured = IntensityChannels.Extract(source, settings.Channel, out bool fallback);
         var regionMask = region?.ToMask(state.Mask.Width, state.Mask.Height);
-        return ParticleAnalyzer.Analyze(state.Mask, source, state.Calibration, settings.ToOptions(), regionMask);
+        var options = settings.ToOptions() with
+        {
+            ExcludePoints = exclude ?? [],
+            IntensityLabel = fallback ? "明るさ" : IntensityChannels.Title(settings.Channel),
+        };
+        return ParticleAnalyzer.Analyze(state.Mask, measured, state.Calibration, options, regionMask);
     }
 }

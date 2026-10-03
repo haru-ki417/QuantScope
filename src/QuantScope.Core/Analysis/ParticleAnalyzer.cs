@@ -52,6 +52,15 @@ public sealed record Particle
     public bool TouchesEdge { get; init; }
 
     public int PixelCount { get; init; }
+
+    /// <summary>陽性か（判定しないときは null）</summary>
+    public bool? Positive { get; init; }
+}
+
+/// <summary>陽性の決まり: 粒の平均（明るさ・染色の量）がしきい値以上（Above が false なら未満）なら陽性</summary>
+public sealed record PositiveRule(double Threshold, bool Above = true)
+{
+    public bool IsPositive(double value) => Above ? value >= Threshold : value < Threshold;
 }
 
 /// <summary>全体のまとめ</summary>
@@ -77,16 +86,31 @@ public sealed record AnalysisSummary
 
     public string AreaUnit { get; init; } = "px²";
     public string LengthUnit { get; init; } = "px";
+
+    /// <summary>明るさとして測ったもの（「明るさ」「DAB の量」など）</summary>
+    public string IntensityLabel { get; init; } = "明るさ";
+
+    /// <summary>手で除いた粒の数</summary>
+    public int ExcludedCount { get; init; }
+
+    /// <summary>陽性の決まり（判定しないときは null）と、陽性の数・割合（%）</summary>
+    public PositiveRule? Positive { get; init; }
+    public int PositiveCount { get; init; }
+    public double PositivePercent { get; init; }
 }
 
 public sealed class AnalysisResult
 {
-    public AnalysisResult(IReadOnlyList<Particle> particles, AnalysisSummary summary, LabelImage labels)
+    public AnalysisResult(IReadOnlyList<Particle> particles, AnalysisSummary summary, LabelImage labels, Mask? excluded = null)
     {
         Particles = particles;
         Summary = summary;
         Labels = labels;
+        Excluded = excluded;
     }
+
+    /// <summary>手で除いた粒の画素（なければ null）</summary>
+    public Mask? Excluded { get; }
 
     public IReadOnlyList<Particle> Particles { get; }
     public AnalysisSummary Summary { get; }
@@ -108,6 +132,15 @@ public sealed record AnalysisOptions
 
     /// <summary>斜めのつながりも同じ粒とみなす（8 連結）</summary>
     public bool EightConnected { get; init; } = true;
+
+    /// <summary>この点（px）を含む粒は数えない（誤って選ばれたゴミなどを手で除く）</summary>
+    public IReadOnlyList<PointD> ExcludePoints { get; init; } = [];
+
+    /// <summary>陽性・陰性に分ける決まり（null なら分けない）</summary>
+    public PositiveRule? Positive { get; init; }
+
+    /// <summary>明るさとして測るものの名前（表の見出しに使う）</summary>
+    public string IntensityLabel { get; init; } = "明るさ";
 
     public static AnalysisOptions Default { get; } = new();
 }
@@ -177,8 +210,19 @@ public static class ParticleAnalyzer
                 else if (region is not null && (!region.Bits[i - 1] || !region.Bits[i + 1] || !region.Bits[i - w] || !region.Bits[i + w])) edge[l] = true;
             }
 
+        // 手で除く点が入っている粒
+        var excludedLabel = new bool[n + 1];
+        foreach (var pt in options.ExcludePoints)
+        {
+            int px = (int)Math.Floor(pt.X), py = (int)Math.Floor(pt.Y);
+            if (px < 0 || py < 0 || px >= w || py >= h) continue;
+            excludedLabel[labels.Labels[(py * w) + px]] = true;
+        }
+        excludedLabel[0] = false;
+
         double u = calibration.UnitsPerPixel;
         var particles = new List<Particle>();
+        int excludedCount = 0;
         var keep = new int[n + 1];
         int nextId = 0;
         for (int l = 1; l <= n; l++)
@@ -188,6 +232,11 @@ public static class ParticleAnalyzer
             if (area < options.MinArea) continue;
             if (options.MaxArea > 0 && area > options.MaxArea) continue;
             if (options.ExcludeEdges && edge[l]) continue;
+            if (excludedLabel[l])
+            {
+                excludedCount++;
+                continue;
+            }
 
             double mx = sx[l] / a, my = sy[l] / a;
             // 2 次のモーメント（画素の広がり 1/12 を足す）から楕円を当てはめる
@@ -234,12 +283,20 @@ public static class ParticleAnalyzer
                 BoundsWidth = bx1[l] - bx0[l] + 1,
                 BoundsHeight = by1[l] - by0[l] + 1,
                 TouchesEdge = edge[l],
+                Positive = options.Positive is { } rule && gray is not null ? rule.IsPositive(mean) : null,
             });
         }
 
         var kept = new int[labels.Labels.Length];
         for (int i = 0; i < kept.Length; i++) kept[i] = keep[labels.Labels[i]];
         var keptLabels = new LabelImage(w, h, kept, particles.Count);
+        Mask? excludedMask = null;
+        if (excludedCount > 0)
+        {
+            excludedMask = new Mask(w, h);
+            for (int i = 0; i < kept.Length; i++) excludedMask.Bits[i] = excludedLabel[labels.Labels[i]];
+        }
+        int positives = particles.Count(p => p.Positive == true);
 
         long analyzedPixels = region?.Count() ?? (long)w * h;
         long objectPixels = particles.Sum(p => (long)p.PixelCount);
@@ -260,8 +317,13 @@ public static class ParticleAnalyzer
             Density = analyzedArea > 0 ? particles.Count / analyzedArea : 0,
             AreaUnit = calibration.AreaUnit,
             LengthUnit = calibration.LengthUnit,
+            IntensityLabel = options.IntensityLabel,
+            ExcludedCount = excludedCount,
+            Positive = gray is null ? null : options.Positive,
+            PositiveCount = positives,
+            PositivePercent = particles.Count > 0 && options.Positive is not null ? 100.0 * positives / particles.Count : 0,
         };
-        return new AnalysisResult(particles, summary, keptLabels);
+        return new AnalysisResult(particles, summary, keptLabels, excludedMask);
     }
 
     /// <summary>周囲長（px）・フェレ径（px）・凸包の面積（px²）</summary>

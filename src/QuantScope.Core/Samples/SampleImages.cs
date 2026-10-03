@@ -16,6 +16,7 @@ public static class SampleImages
     [
         ("nuclei", "蛍光の細胞核（16bit）"),
         ("tissue", "染色した組織（カラー）"),
+        ("ihc", "免疫染色（H-DAB）"),
         ("shapes", "形の見本（大きさが分かっている図形）"),
     ];
 
@@ -23,6 +24,7 @@ public static class SampleImages
     {
         "nuclei" => Nuclei(),
         "tissue" => Tissue(),
+        "ihc" => Ihc(),
         "shapes" => Shapes(),
         _ => throw new ArgumentException($"見本「{id}」はありません。", nameof(id)),
     };
@@ -174,6 +176,91 @@ public static class SampleImages
         return new Sample("tissue", "染色した組織（カラー）",
             "HE 染色ふうの人工の組織の画像です。ピンクの間質、白い腺腔、青紫の核があります。色で核を選び、面積の割合（占有率）を測る練習に使えます。1 px = 0.25 µm。",
             image, new Calibration(0.25, "µm"), recipe);
+    }
+
+    /// <summary>免疫染色の見本の核（中心・半径・陽性か）。テストで正しい値と比べる。</summary>
+    internal static IReadOnlyList<(double X, double Y, double R, bool Positive)> IhcLayout()
+    {
+        var rng = new Random(31);
+        var list = new List<(double X, double Y, double R, bool Positive)>();
+        int tries = 0;
+        while (list.Count < 110 && tries++ < 20000)
+        {
+            double r = 7 + (rng.NextDouble() * 3.5);
+            double x = 14 + (rng.NextDouble() * 772), y = 14 + (rng.NextDouble() * 532);
+            if (list.All(n => Math.Sqrt(((n.X - x) * (n.X - x)) + ((n.Y - y) * (n.Y - y))) > n.R + r + 5))
+                list.Add((x, y, r, rng.NextDouble() < 0.35));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 免疫染色（H-DAB）ふう: 吸光度の足し算（Lambert–Beer）で、ヘマトキシリン（青）と DAB（茶）の量から色を作る。
+    /// 陽性の核は DAB で茶色に、陰性の核はヘマトキシリンだけで青く染まる。
+    /// </summary>
+    private static Sample Ihc()
+    {
+        const int w = 800, h = 560;
+        var hem = new double[w * h];
+        var dab = new double[w * h];
+        var rng = new Random(37);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                // うすく染まった細胞質・間質のむら
+                double tex = 0.5 + (0.5 * Math.Sin((x * 0.031) + (Math.Sin(y * 0.017) * 2.2)));
+                hem[(y * w) + x] = 0.04 + (0.05 * tex);
+                dab[(y * w) + x] = 0.01 + (0.015 * (1 - tex));
+            }
+        foreach (var (nx, ny, nr, pos) in IhcLayout())
+        {
+            double hAmount = pos ? 0.28 + (rng.NextDouble() * 0.12) : 0.55 + (rng.NextDouble() * 0.3);
+            double dAmount = pos ? 0.45 + (rng.NextDouble() * 0.5) : 0.0;
+            for (int y = (int)(ny - nr - 2); y <= (int)(ny + nr + 2); y++)
+                for (int x = (int)(nx - nr - 2); x <= (int)(nx + nr + 2); x++)
+                {
+                    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                    double r = Math.Sqrt(((x + 0.5 - nx) * (x + 0.5 - nx)) + ((y + 0.5 - ny) * (y + 0.5 - ny))) / nr;
+                    double a = 1 / (1 + Math.Exp((r - 1) * 12));
+                    double tex = 0.88 + (0.12 * Math.Sin((x * 0.9) + (y * 0.6)));
+                    int i = (y * w) + x;
+                    hem[i] += hAmount * a * tex;
+                    dab[i] += dAmount * a * tex;
+                }
+        }
+        double[] hv = Unit([0.650, 0.704, 0.286]), dv = Unit([0.268, 0.570, 0.776]);
+        var d = new float[w * h * 3];
+        for (int i = 0; i < w * h; i++)
+            for (int c = 0; c < 3; c++)
+            {
+                double od = (hem[i] * hv[c]) + (dab[i] * dv[c]);
+                double v = (250 * Math.Pow(10, -od)) + (2.5 * Gaussian(rng));
+                d[(i * 3) + c] = (float)Math.Clamp(Math.Round(v), 0, 255);
+            }
+        var image = new Raster(w, h, 3, d);
+        var recipe = new Recipe
+        {
+            Name = "陽性の核の割合（DAB）",
+            Steps =
+            [
+                Make("gaussian", image, ("sigma", 1)),
+                Make("gray", image),
+                Make("threshold", image, ("method", 1), ("bright", 1)),
+                Make("fillHoles", image),
+                Make("watershed", image, ("tolerance", 1.0)),
+                Make("sizeFilter", image, ("min", 40), ("max", 0)),
+            ],
+            Measure = new MeasureSettings { ExcludeEdges = true, Channel = Analysis.IntensityChannel.Dab, Classify = true, PositiveThreshold = 0.15, PositiveAbove = true },
+        };
+        return new Sample("ihc", "免疫染色（H-DAB）",
+            "免疫染色ふうの人工の画像です。抗体が付いた核は DAB で茶色に、付いていない核はヘマトキシリンで青く染まっています。核をすべて選び、核ごとの DAB の量で陽性・陰性に分けて、陽性率を出す練習に使えます。1 px = 0.25 µm。",
+            image, new Calibration(0.25, "µm"), recipe);
+
+        static double[] Unit(double[] v)
+        {
+            double n = Math.Sqrt((v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]));
+            return [v[0] / n, v[1] / n, v[2] / n];
+        }
     }
 
     /// <summary>形の見本の図形（名前・中心・作り方）。テストで正しい値と比べる。</summary>

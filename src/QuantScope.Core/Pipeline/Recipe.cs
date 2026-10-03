@@ -20,12 +20,26 @@ public sealed record MeasureSettings
     /// <summary>明るさを、処理の前の元画像で測る（false なら処理後の画像）</summary>
     public bool IntensityFromOriginal { get; init; } = true;
 
+    /// <summary>「明るさ」として測るもの（明るさ・R/G/B・染色の量）</summary>
+    public IntensityChannel Channel { get; init; } = IntensityChannel.Luminance;
+
+    /// <summary>粒を陽性・陰性に分ける</summary>
+    public bool Classify { get; init; }
+
+    /// <summary>陽性のしきい値（Channel で測った粒の平均）</summary>
+    public double PositiveThreshold { get; init; }
+
+    /// <summary>しきい値以上を陽性にする（false なら未満を陽性）</summary>
+    public bool PositiveAbove { get; init; } = true;
+
     public AnalysisOptions ToOptions() => new()
     {
         MinArea = MinArea,
         MaxArea = MaxArea,
         ExcludeEdges = ExcludeEdges,
         EightConnected = EightConnected,
+        Positive = Classify ? new PositiveRule(PositiveThreshold, PositiveAbove) : null,
+        IntensityLabel = IntensityChannels.Title(Channel),
     };
 }
 
@@ -41,6 +55,7 @@ public sealed class Recipe
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 

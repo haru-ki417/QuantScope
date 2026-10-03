@@ -12,11 +12,13 @@ public static class CsvExport
     public static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
 
     /// <summary>粒ごとの表。file を渡すと先頭に「ファイル」の列を付ける（一括処理用）。</summary>
-    public static string Particles(IEnumerable<(string? File, Particle P)> rows, string lengthUnit, string areaUnit)
+    public static string Particles(IEnumerable<(string? File, Particle P)> rows, string lengthUnit, string areaUnit, string intensityLabel = "明るさ", char separator = ',')
     {
         ArgumentNullException.ThrowIfNull(rows);
         var list = rows.ToList();
         bool withFile = list.Any(r => r.File is not null);
+        bool withPositive = list.Any(r => r.P.Positive is not null);
+        string il = intensityLabel;
         var sb = new StringBuilder();
         var header = new List<string>();
         if (withFile) header.Add("ファイル");
@@ -24,10 +26,11 @@ public static class CsvExport
         [
             "番号", $"面積 ({areaUnit})", $"周囲長 ({lengthUnit})", "円形度", $"相当直径 ({lengthUnit})",
             $"長軸 ({lengthUnit})", $"短軸 ({lengthUnit})", "角度 (度)", "縦横比", $"フェレ径 ({lengthUnit})", "充実度",
-            "平均の明るさ", "明るさの標準偏差", "最小の明るさ", "最大の明るさ", "明るさの合計",
+            $"平均（{il}）", $"標準偏差（{il}）", $"最小（{il}）", $"最大（{il}）", $"合計（{il}）",
             "重心 X (px)", "重心 Y (px)", "左 (px)", "上 (px)", "幅 (px)", "高さ (px)", "ふちに触れる", "画素数",
         ]);
-        AppendRow(sb, header);
+        if (withPositive) header.Add("陽性");
+        AppendRow(sb, header, separator);
         foreach (var (file, p) in list)
         {
             var cells = new List<string>();
@@ -40,7 +43,8 @@ public static class CsvExport
                 N(p.CentroidX), N(p.CentroidY), I(p.BoundsX), I(p.BoundsY), I(p.BoundsWidth), I(p.BoundsHeight),
                 p.TouchesEdge ? "はい" : "いいえ", I(p.PixelCount),
             ]);
-            AppendRow(sb, cells);
+            if (withPositive) cells.Add(p.Positive == true ? "陽性" : p.Positive == false ? "陰性" : "");
+            AppendRow(sb, cells, separator);
         }
         return sb.ToString();
     }
@@ -56,19 +60,21 @@ public static class CsvExport
         AppendRow(sb,
         [
             "ファイル", "数", $"面積の合計 ({au})", $"平均の面積 ({au})", $"面積の中央値 ({au})", $"面積の標準偏差 ({au})",
-            "占有率 (%)", $"調べた範囲の面積 ({au})", $"密度 (個/{au})", "平均の円形度", "平均の明るさ", "メモ",
+            "占有率 (%)", $"調べた範囲の面積 ({au})", $"密度 (個/{au})", "平均の円形度", $"平均（{first?.IntensityLabel ?? "明るさ"}）",
+            "陽性の数", "陽性率 (%)", "手で除いた数", "メモ",
         ]);
         foreach (var (file, s, err) in list)
         {
             if (s is null)
             {
-                AppendRow(sb, [file, "", "", "", "", "", "", "", "", "", "", err ?? ""]);
+                AppendRow(sb, [file, "", "", "", "", "", "", "", "", "", "", "", "", "", err ?? ""]);
                 continue;
             }
             AppendRow(sb,
             [
                 file, I(s.Count), N(s.TotalArea), N(s.MeanArea), N(s.MedianArea), N(s.StdArea),
                 N(s.AreaFraction), N(s.AnalyzedArea), N(s.Density, "0.######"), N(s.MeanCircularity), N(s.MeanIntensity),
+                s.Positive is null ? "" : I(s.PositiveCount), s.Positive is null ? "" : N(s.PositivePercent), I(s.ExcludedCount),
                 s.LengthUnit != lu ? $"単位が違います（{s.LengthUnit}）" : "",
             ]);
         }
@@ -79,17 +85,17 @@ public static class CsvExport
 
     private static string I(int v) => v.ToString(CultureInfo.InvariantCulture);
 
-    private static void AppendRow(StringBuilder sb, IEnumerable<string> cells)
+    private static void AppendRow(StringBuilder sb, IEnumerable<string> cells, char separator = ',')
     {
-        sb.Append(string.Join(",", cells.Select(Escape))).Append("\r\n");
+        sb.Append(string.Join(separator, cells.Select(c => Escape(c, separator)))).Append("\r\n");
     }
 
     /// <summary>カンマ・引用符・改行を含むときは "" で囲む。先頭が = + - @ のときは、表計算ソフトが式として実行しないよう ' を付ける。</summary>
-    internal static string Escape(string s)
+    internal static string Escape(string s, char separator = ',')
     {
         if (s.Length > 0 && "=+-@".Contains(s[0], StringComparison.Ordinal) && !double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
             s = "'" + s;
-        if (s.IndexOfAny([',', '"', '\r', '\n']) >= 0) return "\"" + s.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+        if (s.IndexOfAny([separator, '"', '\r', '\n']) >= 0) return "\"" + s.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
         return s;
     }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using QuantScope.Core.Analysis;
 using QuantScope.Core.Imaging;
 using QuantScope.Core.Processing;
 
@@ -43,6 +44,16 @@ public sealed record ParamDef(string Key, string Label, ParamKind Kind, double D
     public IReadOnlyList<string> Choices { get; init; } = [];
     public ValueScale Scale { get; init; } = ValueScale.Absolute;
     public string? Help { get; init; }
+
+    /// <summary>ほかの値（選択肢）がこの番号のときだけ使う値（そうでないときは画面に出さない）</summary>
+    public (string Key, int Value)? ShowWhen { get; init; }
+
+    /// <summary>この手順の値で、いま使われる値か</summary>
+    public bool IsUsed(Step step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        return ShowWhen is not { } w || step.GetInt(w.Key) == w.Value;
+    }
 
     /// <summary>この画像での範囲と既定値（ImageValue などは画像の値に直す）</summary>
     public (double Min, double Max, double Default) Resolve(Raster? image)
@@ -161,6 +172,23 @@ public static class StepCatalog
             {
                 if (!s.Image.IsColor) c.Warning = "白黒の画像なので、そのままにしました。";
                 return s with { Image = Adjust.ExtractChannel(s.Image, (ColorChannel)p.GetInt("channel")) };
+            },
+        },
+        new()
+        {
+            Id = "stain", Title = "染色を分ける", Category = StepCategory.Adjust,
+            Summary = "明視野の染色画像から、1 つの染料の量だけを取り出します（H&E・免疫染色の DAB など）。",
+            HowItWorks = "光は染料に吸収されるので、吸光度 OD = −log₁₀(I / 255) は染料の量に比例し、重なった染料の OD は足し算になります。染料ごとの色（R・G・B それぞれの吸光度の割合）を並べた行列の逆行列をかけると、画素の OD を染料ごとの量に分けられます（Ruifrok と Johnston のカラーデコンボリューション）。結果は染料の量（OD、0〜3）で、濃く染まった所ほど明るくなります。",
+            Tip = "免疫染色（DAB）で陽性の核を数えるときは、「DAB」を取り出して二値化します。核全体を数えて陽性率を出すなら、計測の条件で「測るもの」を「DAB の量」にし、「陽性を判定する」をオンにします。染料の色は標準的な値を使うので、染めむらの強い標本では分かれ方がずれることがあります。",
+            Parameters = [new("stain", "取り出す染料", ParamKind.Choice, 3) { Choices = ["ヘマトキシリン（H&E）", "エオシン（H&E）", "ヘマトキシリン（H-DAB）", "DAB（H-DAB）"] }],
+            Apply = (s, p, c) =>
+            {
+                if (!s.Image.IsColor) throw new StepNotApplicableException("染色を分けるには、カラーの画像が必要です（前の手順で白黒にしていないか確かめてください）。");
+                var stain = (StainChannel)p.GetInt("stain");
+                var amount = ColorDeconvolution.Amount(s.Image, stain);
+                double mean = amount.Data.Average(v => (double)v);
+                c.Info = string.Create(CultureInfo.InvariantCulture, $"{ColorDeconvolution.Title(stain)}・平均の量 {mean:0.000}");
+                return s with { Image = amount };
             },
         },
         new()
@@ -384,7 +412,7 @@ public static class StepCatalog
             Parameters =
             [
                 new("method", "決め方", ParamKind.Choice, 1) { Choices = ["手動", "大津の方法", "三角法", "平均", "反復法"] },
-                new("value", "しきい値（手動）", ParamKind.Number, 0.5, 0, 1, 1) { Scale = ValueScale.ImageValue, Help = "決め方が「手動」のときに使います。" },
+                new("value", "しきい値", ParamKind.Number, 0.5, 0, 1, 1) { Scale = ValueScale.ImageValue, ShowWhen = ("method", 0) },
                 new("bright", "対象は", ParamKind.Choice, 0) { Choices = ["明るい", "暗い"] },
             ],
             Apply = (s, p, c) =>
@@ -482,6 +510,26 @@ public static class StepCatalog
                 new("max", "最大の面積（0 は上限なし）", ParamKind.Number, 0, 0, 1_000_000, 10) { Unit = "px" },
             ],
             Apply = (s, p, _) => s with { Mask = Morphology.FilterBySize(RequireMask(s), p.Get("min"), p.Get("max")) },
+        },
+        new()
+        {
+            Id = "shapeFilter", Title = "形で選ぶ", Category = StepCategory.Refine, NeedsMask = true,
+            Summary = "丸さ・細長さ・くぼみの少なさで粒を選び、ゴミや重なったかたまりを除きます。",
+            HowItWorks = "粒ごとに、円形度 4π × 面積 / 周囲長²（真円で 1）、縦横比（当てはめた楕円の長軸 / 短軸）、充実度（面積 / 凸包の面積。くぼみがあるほど小さい）を求め、すべての条件に入る粒だけを残します。",
+            Tip = "細胞の核なら、円形度 0.6 以上・充実度 0.85 以上あたりから試すと、重なったかたまりや細長い断片が除けます。除いた粒を確かめるには、この手順のオン・オフを切りかえて比べます。",
+            Parameters =
+            [
+                new("circMin", "円形度の最小", ParamKind.Number, 0, 0, 1, 0.01),
+                new("circMax", "円形度の最大", ParamKind.Number, 1, 0, 1, 0.01),
+                new("aspectMax", "縦横比の最大（0 は上限なし）", ParamKind.Number, 0, 0, 20, 0.1),
+                new("solidityMin", "充実度の最小", ParamKind.Number, 0, 0, 1, 0.01),
+            ],
+            Apply = (s, p, c) =>
+            {
+                var (mask, kept, total) = ShapeFilter.Apply(RequireMask(s), p.Get("circMin"), p.Get("circMax"), p.Get("aspectMax"), p.Get("solidityMin"));
+                c.Info = $"{total} 個のうち {kept} 個を残しました";
+                return s with { Mask = mask };
+            },
         },
         new()
         {
