@@ -8,9 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -40,16 +38,13 @@ jobs:
           cp out/wwwroot/index.html out/wwwroot/404.html
           touch out/wwwroot/.nojekyll
 
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: out/wwwroot
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # 公開用の枝（gh-pages）に、できあがったものだけを置く（GitHub Pages はこの枝から公開する）
+      - name: Deploy to gh-pages
+        run: |
+          cd out/wwwroot
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web 版を公開（${GITHUB_SHA::7}）"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages
