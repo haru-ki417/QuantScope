@@ -1,0 +1,12 @@
+<div class="segments" role="radiogroup" aria-label="単位">
+    @foreach (var u in All)
+    {
+        <button class="seg @(Value == u ? "on" : "")" role="radio" aria-checked="@(Value == u)" @onclick="() => OnChange.InvokeAsync(u)">@u</button>
+    }
+</div>
+
+@code {
+    private static readonly string[] All = ["nm", "µm", "mm", "cm"];
+    [Parameter] public string Value { get; set; } = "µm";
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+}

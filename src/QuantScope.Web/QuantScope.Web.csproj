@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>QuantScope.Web</RootNamespace>
+    <AssemblyName>QuantScope.Web</AssemblyName>
+    <!-- 数の書き方は国や地域によらず同じにする（小数点は「.」）。ダウンロードも小さくなる -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <BlazorWebAssemblyLoadAllGlobalizationData>false</BlazorWebAssemblyLoadAllGlobalizationData>
+    <WasmEnableWebcil>true</WasmEnableWebcil>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+    <NoWarn>$(NoWarn);CA1716;CA1515;CA1812</NoWarn>
+  </PropertyGroup>
+
+  <!-- 公開するときは、画像処理を速くするため WebAssembly にあらかじめ翻訳する（AOT） -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QuantScope.Core\QuantScope.Core.csproj" />
+  </ItemGroup>
+
+  <!-- DICOM の部品は中で型を名前から探すので、使っていないように見えても削らない -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="fo-dicom.core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
+
+</Project>

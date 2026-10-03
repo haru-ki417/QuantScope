@@ -1,0 +1,17 @@
+@inherits WsComponent
+
+<div class="empty">
+    <div class="empty-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <h1>画像から、数える・測る。</h1>
+    <p class="muted">顕微鏡の画像や医用画像を、手順を積み重ねて解析し、粒の数・面積・形・明るさを測ります。画像はこのブラウザーの中だけで処理し、どこにも送りません。</p>
+    <label class="btn primary big" for="open-file"><Icon Name="open" /> 画像を開く</label>
+    <p class="muted small">PNG・JPEG・TIFF（16 bit も）・BMP・GIF・WebP・DICOM。パソコンではドロップでも開けます。</p>
+    <div class="empty-sep"></div>
+    <div class="muted small text-center">見本で試す（手順の例つき）</div>
+    <div class="sample-grid">
+        @foreach (var s in QuantScope.Core.Samples.SampleImages.List)
+        {
+            <button class="btn" @onclick="() => Ws.OpenSample(s.Id)">@s.Title</button>
+        }
+    </div>
+</div>

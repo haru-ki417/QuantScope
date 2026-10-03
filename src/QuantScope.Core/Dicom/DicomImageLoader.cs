@@ -28,6 +28,23 @@ public static class DicomImageLoader
         return FromDataset(file.Dataset);
     }
 
+    /// <summary>メモリの中の DICOM を読む（ブラウザー版など、ファイルの場所がないとき）</summary>
+    public static LoadedImage Load(Stream stream)
+    {
+        DicomFile file;
+        try
+        {
+            file = DicomFile.Open(stream, FileReadOption.ReadAll);
+        }
+        catch (DicomFileException ex)
+        {
+            throw new InvalidDataException("DICOM のファイルとして読めませんでした。", ex);
+        }
+        return FromDataset(file.Dataset);
+    }
+
+    public static bool LooksLikeDicom(ReadOnlySpan<byte> d) => d.Length >= 132 && d[128] == 'D' && d[129] == 'I' && d[130] == 'C' && d[131] == 'M';
+
     public static LoadedImage FromDataset(DicomDataset ds)
     {
         ArgumentNullException.ThrowIfNull(ds);

@@ -1,0 +1,54 @@
+@inherits ChartBase
+@* 画素の明るさの分布。濃い色が実際の数、薄い色が対数。しきい値の線をドラッグできる *@
+
+@if (Histogram is { Total: > 0 } h)
+{
+    long max = h.Counts.Max();
+    double logMax = Math.Max(Math.Log10(max + 1), 1e-9);
+    <div class="chart @(Marker is null ? "" : "draggable")" style="height:@(Height)px" @ref="Box"
+         @onpointerdown="Down" @onpointermove="Move" @onpointerup="Up" @onpointercancel="Up">
+        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" class="chart-svg" aria-hidden="true">
+            <path class="hist-log" d="@Path(h, c => Math.Log10(c + 1) / logMax)" />
+            <path class="hist-lin" d="@Path(h, c => (double)c / max)" />
+            @if (Marker is { } m)
+            {
+                double x = (m - h.Min) / (h.Max - h.Min) * 1000;
+                <rect class="target" x="@F(Math.Max(0, Above ? x : 0))" y="0" width="@F(Math.Max(0, Above ? 1000 - x : x))" height="100" />
+                <line x1="@F(x)" y1="0" x2="@F(x)" y2="100" class="marker" vector-effect="non-scaling-stroke" />
+            }
+            <line x1="0" y1="100" x2="1000" y2="100" class="axis" vector-effect="non-scaling-stroke" />
+        </svg>
+        @if (Marker is { } mm)
+        {
+            <span class="marker-label" style="left:@F(Math.Clamp((mm - h.Min) / (h.Max - h.Min) * 100, 0, 100))%">@Workspace.Fmt(mm)</span>
+        }
+    </div>
+    <div class="chart-axis"><span>@Workspace.Fmt(h.Min)</span><span>@Workspace.Fmt((h.Min + h.Max) / 2)</span><span>@Workspace.Fmt(h.Max)</span></div>
+}
+
+@code {
+    [Parameter] public Histogram? Histogram { get; set; }
+    [Parameter] public double? Marker { get; set; }
+    [Parameter] public bool Above { get; set; } = true;
+    [Parameter] public int Height { get; set; } = 170;
+    [Parameter] public EventCallback<double> OnMarker { get; set; }
+
+    protected override bool CanDrag => Marker is not null && OnMarker.HasDelegate && Histogram is not null;
+
+    private static string Path(Histogram h, Func<long, double> f)
+    {
+        var sb = new System.Text.StringBuilder("M0,100");
+        for (int i = 0; i < h.Bins; i++)
+        {
+            double x0 = (double)i / h.Bins * 1000, x1 = (double)(i + 1) / h.Bins * 1000, y = 100 - (f(h.Counts[i]) * 96);
+            sb.Append(CultureInfo.InvariantCulture, $" L{x0:0.##},{y:0.##} L{x1:0.##},{y:0.##}");
+        }
+        return sb.Append(" L1000,100 Z").ToString();
+    }
+
+    protected override void OnDragTo(double fraction)
+    {
+        if (Histogram is not { } h) return;
+        OnMarker.InvokeAsync(h.Min + (fraction * (h.Max - h.Min)));
+    }
+}

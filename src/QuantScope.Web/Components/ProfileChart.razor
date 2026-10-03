@@ -1,0 +1,25 @@
+@* 線に沿った明るさ（折れ線） *@
+
+@if (Profile is { Values.Length: > 1 } p)
+{
+    double min = p.Values.Min(), max = p.Values.Max();
+    if (max - min < 1e-9) max = min + 1;
+    double len = Math.Max(p.Distances[^1], 1e-9);
+    <div class="chart profile" style="height:200px">
+        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" class="chart-svg" aria-hidden="true">
+            @for (int g = 0; g <= 4; g++)
+            {
+                <line x1="0" y1="@(g * 25)" x2="1000" y2="@(g * 25)" class="grid" vector-effect="non-scaling-stroke" />
+            }
+            <polyline class="trace" vector-effect="non-scaling-stroke"
+                      points="@string.Join(" ", p.Values.Select((v, i) => string.Create(CultureInfo.InvariantCulture, $"{p.Distances[i] / len * 1000:0.##},{(max - v) / (max - min) * 96 + 2:0.##}")))" />
+        </svg>
+        <span class="ymax">@Workspace.Fmt(max)</span>
+        <span class="ymin">@Workspace.Fmt(min)</span>
+    </div>
+    <div class="chart-axis"><span>0</span><span>@Workspace.Fmt(p.Length / 2)</span><span>@Workspace.Fmt(p.Length) @p.LengthUnit</span></div>
+}
+
+@code {
+    [Parameter] public LineProfileResult? Profile { get; set; }
+}

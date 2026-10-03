@@ -1,0 +1,42 @@
+@* 線のアイコン（外の部品を使わず、SVG で描く） *@
+<svg class="icon @(Small ? "small" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    @switch (Name)
+    {
+        case "open": <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1" /><path d="M3 7v11a2 2 0 0 0 2 2h13l3-9H7l-3 9" />; break;
+        case "save": <path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M7 3v5h8V3M7 21v-7h10v7" />; break;
+        case "chevron": <path d="M6 9l6 6 6-6" />; break;
+        case "sample": <path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3" /><path d="M7 15h10" />; break;
+        case "batch": <rect x="3" y="7" width="13" height="13" rx="2" /><path d="M7 4h11a2 2 0 0 1 2 2v11" />; break;
+        case "info": <circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" />; break;
+        case "ruler": <path d="M3 17L17 3l4 4L7 21z" /><path d="M7 13l2 2M10 10l2 2M13 7l2 2" />; break;
+        case "undo": <path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" />; break;
+        case "redo": <path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" />; break;
+        case "trash": <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />; break;
+        case "plus": <path d="M12 5v14M5 12h14" />; break;
+        case "up": <path d="M12 19V5M6 11l6-6 6 6" />; break;
+        case "down": <path d="M12 5v14M6 13l6 6 6-6" />; break;
+        case "copy": <rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" />; break;
+        case "x": <path d="M6 6l12 12M18 6L6 18" />; break;
+        case "image": <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 17l-5-5-9 8" />; break;
+        case "measure": <path d="M4 20h16M6 20V10M11 20V4M16 20v-7" />; break;
+        case "pan": <path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" />; break;
+        case "rect": <rect x="4" y="5" width="16" height="14" rx="1" />; break;
+        case "ellipse": <ellipse cx="12" cy="12" rx="9" ry="7" />; break;
+        case "polygon": <path d="M12 3l8 6-3 11H7L4 9z" />; break;
+        case "line": <path d="M5 19L19 5" /><circle cx="5" cy="19" r="1.5" /><circle cx="19" cy="5" r="1.5" />; break;
+        case "exclude": <circle cx="12" cy="12" r="8" /><path d="M6.5 6.5l11 11" />; break;
+        case "fit": <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />; break;
+        case "compare": <rect x="3" y="5" width="18" height="14" rx="2" /><path d="M12 3v18" />; break;
+        case "book": <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" /><path d="M4 19V5" />; break;
+        case "eye": <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />; break;
+        case "folder": <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />; break;
+        case "github": <path d="M9 19c-4 1.3-4-2-6-2.5m12 4.5v-3.4a3 3 0 0 0-.8-2.3c2.7-.3 5.6-1.3 5.6-6a4.6 4.6 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1-.3-3.4 1.3a11.6 11.6 0 0 0-6 0C6.6 2.6 5.6 2.9 5.6 2.9a4.3 4.3 0 0 0-.1 3.2A4.6 4.6 0 0 0 4.2 9.3c0 4.6 2.9 5.7 5.6 6a3 3 0 0 0-.8 2.3V21" />; break;
+        case "windows": <path d="M3 5.5l7.5-1v7H3zM12 4.3L21 3v8.5h-9zM3 12.5h7.5v7L3 18.5zM12 12.5h9V21l-9-1.3z" />; break;
+        default: <circle cx="12" cy="12" r="2" />; break;
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public bool Small { get; set; }
+}

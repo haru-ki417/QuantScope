@@ -1,0 +1,158 @@
+@inherits WsComponent
+@inject BrowserIo Io
+
+<Modal Title="たくさんの画像に、同じ手順をかけて測る" Class="wide" OnClose="Close">
+    <p class="muted">使うレシピ: 「@Ws.Recipe.Name」（手順 @Ws.Recipe.Steps.Count(s => s.Enabled) つ・縮尺 @Ws.Calibration）。結果は CSV と確認用の画像をまとめた zip になります。画像はどこにも送りません。</p>
+    @if (!HasSegmentation)
+    {
+        <p class="warn">レシピに「二値化」などの対象を選ぶ手順がありません。先に手順を作るか、見本を開いてください。</p>
+    }
+    <div class="param-row wrap">
+        <InputFile id="batch-files" class="hidden-input" OnChange="Pick" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif,.webp,.dcm,image/*" />
+        <label class="btn" for="batch-files"><Icon Name="folder" /> 画像を選ぶ</label>
+        <span class="muted">@(_files.Count == 0 ? "まだ選んでいません（複数選べます）" : $"画像 {_files.Count} 枚")</span>
+        <label class="check"><input type="checkbox" @bind="_overlays" /><span>確かめ用に、重ねた画像も入れる</span></label>
+    </div>
+    @if (_running || _rows.Count > 0)
+    {
+        <div class="progress"><span style="width:@((_progress * 100).ToString("0", CultureInfo.InvariantCulture))%"></span></div>
+        <p class="muted small">@_progressText</p>
+        <div class="table-wrap short">
+            <table class="grid">
+                <thead><tr><th class="left">ファイル</th><th>数</th><th>占有率</th><th>平均の面積</th><th>陽性率</th><th class="left">メモ</th></tr></thead>
+                <tbody>
+                    @foreach (var r in _rows)
+                    {
+                        <tr class="@(r.Result is null ? "failed" : "")">
+                            <td class="left">@r.File</td>
+                            <td>@(r.Result?.Summary.Count.ToString(CultureInfo.InvariantCulture))</td>
+                            <td>@(r.Result is null ? "" : r.Result.Summary.AreaFraction.ToString("0.00", CultureInfo.InvariantCulture) + "%")</td>
+                            <td>@(r.Result is null ? "" : Fmt(r.Result.Summary.MeanArea))</td>
+                            <td>@(r.Result?.Summary.Positive is null ? "" : r.Result.Summary.PositivePercent.ToString("0.0", CultureInfo.InvariantCulture) + "%")</td>
+                            <td class="left warn">@r.Error</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    <div class="modal-foot">
+        @if (_running)
+        {
+            <button class="btn" @onclick="() => _cts?.Cancel()">止める</button>
+        }
+        else
+        {
+            <button class="btn" @onclick="Close">閉じる</button>
+            <button class="btn primary" disabled="@(_files.Count == 0 || !HasSegmentation)" @onclick="RunAsync">始める</button>
+        }
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private const long MaxBytes = 200L * 1024 * 1024;
+    private List<IBrowserFile> _files = [];
+    private readonly List<BatchItemResult> _rows = [];
+    private bool _overlays = true;
+    private bool _running;
+    private double _progress;
+    private string _progressText = "";
+    private CancellationTokenSource? _cts;
+
+    private bool HasSegmentation => Ws.Recipe.Steps.Any(s => s.Enabled && StepCatalog.Get(s.Kind).Category == StepCategory.Segment);
+
+    private void Pick(InputFileChangeEventArgs e)
+    {
+        _files = e.GetMultipleFiles(500).ToList();
+        _rows.Clear();
+    }
+
+    private async Task Close()
+    {
+        _cts?.Cancel();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        _running = true;
+        _rows.Clear();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        var recipe = Ws.Recipe.Clone();
+        recipe.Calibration ??= Ws.Calibration.IsCalibrated ? Ws.Calibration : null;
+        string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+        using var zipStream = new MemoryStream();
+        try
+        {
+            using (var zip = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            {
+                for (int i = 0; i < _files.Count; i++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var f = _files[i];
+                    _progress = (double)i / _files.Count;
+                    _progressText = $"{i + 1} / {_files.Count}　{f.Name}";
+                    StateHasChanged();
+                    await Task.Delay(16, token);
+                    var item = await ProcessOne(f, recipe, zip, token);
+                    _rows.Add(item);
+                }
+                Add(zip, $"まとめ_{stamp}.csv", [.. CsvExport.Encoding.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(BatchProcessor.SummaryCsv(_rows))]);
+                Add(zip, $"粒ごと_{stamp}.csv", [.. CsvExport.Encoding.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(BatchProcessor.ParticlesCsv(_rows))]);
+                Add(zip, $"レシピ_{stamp}.json", System.Text.Encoding.UTF8.GetBytes(recipe.ToJson()));
+            }
+            _progress = 1;
+            int failed = _rows.Count(r => r.Result is null);
+            _progressText = $"終わりました: {_rows.Count - failed} 枚を測りました" + (failed > 0 ? $"（{failed} 枚は測れませんでした）" : "") + "。zip を書き出しました。";
+            await Io.DownloadAsync($"QuantScope_一括処理_{stamp}.zip", "application/zip", zipStream.ToArray());
+        }
+        catch (OperationCanceledException)
+        {
+            _progressText = $"止めました（{_rows.Count} 枚まで）。";
+        }
+        finally
+        {
+            _running = false;
+            _cts.Dispose();
+            _cts = null;
+        }
+    }
+
+    private async Task<BatchItemResult> ProcessOne(IBrowserFile f, Recipe recipe, System.IO.Compression.ZipArchive zip, CancellationToken token)
+    {
+        try
+        {
+            if (f.Size > MaxBytes) throw new InvalidDataException("ファイルが大きすぎます（200 MB まで）。");
+            using var ms = new MemoryStream();
+            await using (var s = f.OpenReadStream(MaxBytes, token)) await s.CopyToAsync(ms, token);
+            var img = await ImageLoader.LoadAsync(ms.ToArray(), f.Name, f.ContentType, Io);
+            var cal = recipe.Calibration ?? img.Calibration ?? Calibration.Pixels;
+            var run = PipelineRunner.Run(img.Raster, cal, recipe.Steps, null, token);
+            var result = PipelineRunner.Analyze(run.Final, recipe.Measure);
+            var warn = run.Outcomes.Select((o, k) => (o, k)).Where(t => t.o.Warning is not null).Select(t => $"手順 {t.k + 1}: {t.o.Warning}").FirstOrDefault();
+            if (result is null) return new BatchItemResult(f.Name, null, warn ?? "対象を選ぶ手順（二値化など）がありません");
+            if (_overlays)
+            {
+                var st = run.Final;
+                var baseImg = st.Original.Width == st.Image.Width ? st.Original : st.Image;
+                var png = await Io.EncodePngAsync(baseImg.Width, baseImg.Height, Frames.Composite(st, result, ColorMap.Gray, false, 0.8), 0);
+                Add(zip, Path.GetFileNameWithoutExtension(f.Name) + "_重ね.png", png);
+            }
+            return new BatchItemResult(f.Name, result, warn);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or ArgumentException or JSException or FellowOakDicom.DicomException)
+        {
+            return new BatchItemResult(f.Name, null, ex.Message);
+        }
+    }
+
+    private static void Add(System.IO.Compression.ZipArchive zip, string name, byte[] bytes)
+    {
+        var e = zip.CreateEntry(name, System.IO.Compression.CompressionLevel.Fastest);
+        using var s = e.Open();
+        s.Write(bytes);
+    }
+}

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/QuantScope.App/QuantScope.App.csproj" />
     <Project Path="src/QuantScope.Core/QuantScope.Core.csproj" />
+    <Project Path="src/QuantScope.Web/QuantScope.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/QuantScope.Tests/QuantScope.Tests.csproj" />

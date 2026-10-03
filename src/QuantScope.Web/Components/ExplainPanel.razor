@@ -1,0 +1,28 @@
+@inherits WsComponent
+
+@if (Ws.SelectedStep is { } i && i < Ws.Recipe.Steps.Count)
+{
+    var def = StepCatalog.Get(Ws.Recipe.Steps[i].Kind);
+    <div class="kicker">@StepCatalog.CategoryTitle(def.Category)</div>
+    <h2 class="explain-title">@def.Title</h2>
+    <p class="lead">@def.Summary</p>
+    <h3>しくみ</h3>
+    <p class="body">@def.HowItWorks</p>
+    @if (def.Tip is { } tip)
+    {
+        <div class="card soft"><b class="accent">使いどころ</b><p>@tip</p></div>
+    }
+}
+else
+{
+    <h2 class="explain-title">解析の流れ</h2>
+    <p class="body">画像から対象を数えて測るときは、ふつう次の順に手順を重ねます。手順を選ぶと、その手順のしくみがここに出ます。</p>
+    <ol class="flow">
+        <li><b>整える</b>　背景のむらを補正し、軽くぼかしてノイズを減らす。染色の画像は「染色を分ける」で染料ごとに分ける</li>
+        <li><b>選ぶ</b>　しきい値や色で、対象と背景を分ける（二値化）</li>
+        <li><b>直す</b>　穴を埋め、くっついた粒を分け、大きさや形でゴミを除く</li>
+        <li><b>測る</b>　粒ごとに面積・形・明るさを測る。必要なら陽性・陰性に分け、誤って選ばれた粒は手で除く</li>
+        <li><b>残す・くり返す</b>　レポートやレシピとして保存し、ほかの画像にも同じようにかける（一括処理）</li>
+    </ol>
+    <p class="muted">計測の数値は、処理する前の画像の明るさと、縮尺（1 px の長さ）をもとに計算します。縮尺は下のバーか、線の道具から決められます。</p>
+}

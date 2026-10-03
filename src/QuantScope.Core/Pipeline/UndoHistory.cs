@@ -1,4 +1,4 @@
-namespace QuantScope.App.Services;
+namespace QuantScope.Core.Pipeline;
 
 /// <summary>
 /// 元に戻す・やり直すための、レシピの記録（JSON）。

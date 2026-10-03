@@ -1,0 +1,17 @@
+@* 画面の中央に出す小さな窓（Esc・外側のタップで閉じる） *@
+<div class="modal-backdrop" @onclick="Close"></div>
+<div class="modal @Class" role="dialog" aria-modal="true" aria-label="@Title" @onkeydown="Key" tabindex="-1">
+    <div class="modal-head"><h2>@Title</h2><button class="icon-btn" @onclick="Close" aria-label="閉じる"><Icon Name="x" /></button></div>
+    <div class="modal-body">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private Task Key(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+}

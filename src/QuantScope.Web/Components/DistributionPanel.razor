@@ -1,0 +1,84 @@
+@inherits WsComponent
+
+<div class="segments" role="tablist">
+    <button class="seg @(Ws.DistributionMode == DistributionMode.Pixels ? "on" : "")" @onclick="() => SetMode(DistributionMode.Pixels)">画素の明るさ</button>
+    <button class="seg @(Ws.DistributionMode == DistributionMode.Particles ? "on" : "")" @onclick="() => SetMode(DistributionMode.Particles)">粒の値</button>
+</div>
+
+@if (Ws.DistributionMode == DistributionMode.Pixels)
+{
+    var h = Ws.PixelHistogram;
+    var marker = Ws.HistogramMarker;
+    bool bright = Ws.SelectedStep is { } i && Ws.Recipe.Steps[i].GetInt("bright") == 0;
+    <h3>明るさの分布（ヒストグラム）</h3>
+    <p class="muted">表示している画像の明るさごとの画素の数です。濃い部分が実際の数、薄い部分は数の少ない明るさも見えるように対数にしたものです。</p>
+    @if (h is not null && h.Total > 0)
+    {
+        <HistogramChart Histogram="h" Marker="marker" Above="bright" OnMarker="v => Ws.SetThresholdFromHistogram(v)" />
+        <p class="stats">画素 @h.Total.ToString("N0", CultureInfo.InvariantCulture)　平均 @Fmt(h.Mean)　標準偏差 @Fmt(h.StdDev)<br />最小 @Fmt(h.DataMin)　中央値 @Fmt(h.Median)　最大 @Fmt(h.DataMax)　最頻 @Fmt(h.Mode)@(Ws.Roi is null ? "" : "（選んだ範囲の中）")</p>
+    }
+    @if (marker is not null)
+    {
+        <div class="card soft"><p>緑の線が、いま選んでいる二値化のしきい値です。線をドラッグすると、しきい値を自分で決められます（決め方は「手動」に変わります）。マゼンタの側が「対象」です。</p></div>
+    }
+    else
+    {
+        <p class="muted">手順で「二値化（しきい値）」を選ぶと、ここにしきい値の線が出ます。範囲を選ぶと、範囲の中だけの分布になります。</p>
+    }
+}
+else
+{
+    <h3>粒の値の分布</h3>
+    <p class="muted">計測した粒の値が、どのように散らばっているかを見ます。</p>
+    @if (Ws.Analysis is { Particles.Count: > 0 } a)
+    {
+        var f = ParticleFeatures.Get(Ws.FeatureKey);
+        var values = a.Particles.Select(f.Get).ToList();
+        var d = Statistics.Describe(values);
+        string u = f.UnitText(a.Summary);
+        bool split = Ws.Measure.Classify && f == ParticleFeatures.MeanIntensity;
+        <select class="select" value="@Ws.FeatureKey" @onchange="e => SetFeature(e.Value?.ToString())" aria-label="見る値">
+            @foreach (var feat in ParticleFeatures.All)
+            {
+                <option value="@feat.Key" selected="@(feat.Key == Ws.FeatureKey)">@feat.Header(a.Summary)</option>
+            }
+        </select>
+        <BinChart Bins="Statistics.Histogram(values)" Marker="split ? Ws.Measure.PositiveThreshold : null" Split="split" Above="Ws.Measure.PositiveAbove" Height="180"
+                  OnMarker="SetPositive" />
+        <dl class="stat-list">
+            <div><dt>数</dt><dd>@d.N.ToString("N0", CultureInfo.InvariantCulture)</dd></div>
+            <div><dt>平均 ± 標準偏差</dt><dd>@Fmt(d.Mean) ± @Fmt(d.Sd) @u</dd></div>
+            <div><dt>中央値［四分位］</dt><dd>@Fmt(d.Median)［@Fmt(d.Q1)–@Fmt(d.Q3)］@u</dd></div>
+            <div><dt>最小 – 最大</dt><dd>@Fmt(d.Min) – @Fmt(d.Max) @u</dd></div>
+            <div><dt>変動係数</dt><dd>@d.CvPercent.ToString("0.0", CultureInfo.InvariantCulture) %</dd></div>
+            @if (split && a.Summary.Positive is not null)
+            {
+                <div><dt>陽性</dt><dd>@a.Summary.PositiveCount / @a.Summary.Count（@a.Summary.PositivePercent.ToString("0.0", CultureInfo.InvariantCulture) %）</dd></div>
+            }
+        </dl>
+        @if (split)
+        {
+            <p class="muted">マゼンタが陽性、水色が陰性の粒です。線をドラッグすると、陽性のしきい値を変えられます。</p>
+        }
+    }
+    else
+    {
+        <p class="muted">手順に「二値化」などを入れて粒を数えると、ここに分布が出ます。</p>
+    }
+}
+
+@code {
+    private void SetPositive(double v) => Ws.SetMeasure(Ws.Measure with { PositiveThreshold = Math.Round(v, 4) }, "positive");
+
+    private void SetMode(DistributionMode m)
+    {
+        Ws.DistributionMode = m;
+        Ws.Notify();
+    }
+
+    private void SetFeature(string? key)
+    {
+        Ws.FeatureKey = key ?? ParticleFeatures.Area.Key;
+        Ws.Notify();
+    }
+}

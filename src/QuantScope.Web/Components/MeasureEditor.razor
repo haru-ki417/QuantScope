@@ -1,0 +1,77 @@
+@inherits WsComponent
+
+@{ var m = Ws.Measure; }
+<div class="kicker">計測</div>
+<h3>計測の条件</h3>
+<p class="muted">二値化で選んだ粒を、ここで決めた条件で数えて測ります。条件はレシピと一緒に保存されます。</p>
+
+<div class="param">
+    <div class="param-label">数える粒の面積</div>
+    <div class="range-pair">
+        <input class="num" type="number" inputmode="decimal" step="any" min="0" value="@Inv(m.MinArea)" @onchange="e => Set(m with { MinArea = Math.Max(0, Parse(e.Value, m.MinArea)) })" aria-label="面積の下限" />
+        <span class="muted">〜</span>
+        <input class="num" type="number" inputmode="decimal" step="any" min="0" value="@Inv(m.MaxArea)" @onchange="e => Set(m with { MaxArea = Math.Max(0, Parse(e.Value, m.MaxArea)) })" aria-label="面積の上限" />
+        <span class="unit">@Ws.Calibration.AreaUnit</span>
+    </div>
+    <p class="muted small">下限より小さい粒・上限より大きい粒は数えません（上限 0 は上限なし）。</p>
+</div>
+<label class="check"><input type="checkbox" checked="@m.ExcludeEdges" @onchange="e => Set(m with { ExcludeEdges = (bool)e.Value! })" /><span>ふち（画像・範囲）に触れた粒を数えない</span></label>
+
+<div class="param">
+    <label class="param-label" for="m-channel">明るさとして測るもの</label>
+    <select id="m-channel" class="select" value="@((int)m.Channel)" @onchange="e => Set(m with { Channel = (IntensityChannel)int.Parse(e.Value!.ToString()!, CultureInfo.InvariantCulture) })">
+        @for (int i = 0; i < IntensityChannels.Titles.Count; i++)
+        {
+            <option value="@i" selected="@((int)m.Channel == i)">@IntensityChannels.Titles[i]</option>
+        }
+    </select>
+    @if (Ws.ChannelNeedsColor)
+    {
+        <p class="warn small">白黒の画像なので、明るさで測ります（色や染色の量は、カラーの画像で測れます）。</p>
+    }
+</div>
+<label class="check"><input type="checkbox" checked="@m.IntensityFromOriginal" @onchange="e => Set(m with { IntensityFromOriginal = (bool)e.Value! })" /><span>処理する前の画像で測る（おすすめ）</span></label>
+
+<hr />
+<label class="check strong"><input type="checkbox" checked="@m.Classify" @onchange="e => Set(m with { Classify = (bool)e.Value! })" /><span>陽性・陰性に分ける</span></label>
+<p class="muted indent">粒ごとの平均（上で選んだもの）がしきい値を超えた粒を陽性とし、陽性率を出します。</p>
+@if (m.Classify)
+{
+    <div class="param">
+        <div class="param-row">
+            <label class="param-label" for="m-pos">しきい値</label>
+            <input id="m-pos" class="num" type="number" inputmode="decimal" step="any" value="@Inv(m.PositiveThreshold)" @onchange="e => Set(m with { PositiveThreshold = Parse(e.Value, m.PositiveThreshold) })" />
+            <button class="link-btn" @onclick="Ws.AutoPositiveThreshold" title="粒の平均の分布を 2 組に分ける値（大津の方法）">自動で決める</button>
+        </div>
+        <div class="segments">
+            <button class="seg @(m.PositiveAbove ? "on" : "")" @onclick="() => Set(m with { PositiveAbove = true })">以上を陽性</button>
+            <button class="seg @(!m.PositiveAbove ? "on" : "")" @onclick="() => Set(m with { PositiveAbove = false })">未満を陽性</button>
+        </div>
+        @if (Ws.Analysis is { Particles.Count: > 0 } a)
+        {
+            <BinChart Bins="Statistics.Histogram(a.Particles.Select(p => p.MeanIntensity))" Marker="m.PositiveThreshold" Split="true" Above="m.PositiveAbove" Height="96"
+                      OnMarker="v => Set(m with { PositiveThreshold = Math.Round(v, 4) }, coalesce: true)" />
+            <p class="muted small">粒ごとの平均（@a.Summary.IntensityLabel）の分布。線をドラッグしてしきい値を決められます。</p>
+        }
+    </div>
+}
+
+<hr />
+<div class="param-row">
+    <span class="strong">手で除いた粒</span>
+    <button class="link-btn" disabled="@(Ws.ExcludedCount == 0)" @onclick="Ws.RestoreExcluded">すべて戻す</button>
+</div>
+@if (Ws.ExcludedCount > 0)
+{
+    <p>手で除いた粒 @Ws.ExcludedCount 個</p>
+}
+<p class="muted">画像の上の道具「粒を除く」で、ゴミや誤って選ばれた粒をタップ・クリックすると、数から外せます。もう一度で戻ります。除いた数はレポートに残ります。</p>
+
+@code {
+    private static string Inv(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
+
+    private static double Parse(object? value, double fallback) =>
+        double.TryParse(value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && double.IsFinite(v) ? v : fallback;
+
+    private void Set(MeasureSettings m, bool coalesce = false) => Ws.SetMeasure(m, coalesce ? "positive" : null);
+}

@@ -1,0 +1,83 @@
+@inherits WsComponent
+
+<Modal Title="縮尺を決める" OnClose="OnClose">
+    @if (Ws.Line is { } l)
+    {
+        <p class="muted">引いた線の長さ: @l.A.DistanceTo(l.B).ToString("0.0", CultureInfo.InvariantCulture) px。長さの分かるもの（スケールバーなど）に引いた線なら、実際の長さを入れて縮尺にできます。</p>
+        <div class="param-label">線の実際の長さ</div>
+        <div class="param-row wrap">
+            <input class="num" type="number" inputmode="decimal" step="any" min="0" @bind="_length" />
+            <Units Value="@_unit" OnChange="u => _unit = u" />
+            <button class="btn primary" @onclick="FromLine">線で決める</button>
+        </div>
+    }
+    else
+    {
+        <p class="muted">画像の上で「線」の道具を使い、長さの分かるもの（スケールバーなど）に線を引くと、線から縮尺を決められます。</p>
+    }
+    <div class="param-label">または、1 px の長さを直接入れる</div>
+    <div class="param-row wrap">
+        <span>1 px =</span>
+        <input class="num" type="number" inputmode="decimal" step="any" min="0" @bind="_perPixel" />
+        <Units Value="@_unit" OnChange="u => _unit = u" />
+        <button class="btn" @onclick="Direct">決める</button>
+    </div>
+    @if (_error is not null)
+    {
+        <p class="warn">@_error</p>
+    }
+    <div class="modal-foot">
+        <button class="link-btn" @onclick="Clear">縮尺をなくす（px で測る）</button>
+        <button class="btn" @onclick="() => OnClose.InvokeAsync()">閉じる</button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    private double _length = 10;
+    private double _perPixel = 1;
+    private string _unit = "µm";
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        var c = Ws.Calibration;
+        if (c.IsCalibrated)
+        {
+            _unit = c.Unit;
+            _perPixel = c.UnitsPerPixel;
+        }
+    }
+
+    private async Task FromLine()
+    {
+        if (Ws.Line is not { } l) return;
+        try
+        {
+            Ws.SetCalibration(Calibration.FromKnownLength(l.A.DistanceTo(l.B), _length, _unit));
+            await OnClose.InvokeAsync();
+        }
+        catch (ArgumentException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task Direct()
+    {
+        if (!(_perPixel > 0) || !double.IsFinite(_perPixel))
+        {
+            _error = "1 px あたりの長さを、0 より大きい数で入れてください。";
+            return;
+        }
+        Ws.SetCalibration(new Calibration(_perPixel, _unit));
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task Clear()
+    {
+        Ws.SetCalibration(null);
+        await OnClose.InvokeAsync();
+    }
+}

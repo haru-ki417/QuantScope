@@ -1,0 +1,24 @@
+@inherits WsComponent
+
+<h3>線に沿った明るさ（ラインプロファイル）</h3>
+@if (Ws.Profile is { } p && Ws.Line is { } l)
+{
+    <ProfileChart Profile="p" />
+    <p class="stats">長さ @Fmt(p.Length) @p.LengthUnit（@l.A.DistanceTo(l.B).ToString("0.0", CultureInfo.InvariantCulture) px）　平均 @Fmt(p.Values.Average())　最小 @Fmt(p.Values.Min())　最大 @Fmt(p.Values.Max())</p>
+    <div class="row-buttons">
+        <button class="btn" @onclick="() => _calib = true">この線で縮尺を決める</button>
+        <button class="link-btn" @onclick="() => Ws.SetLine(null)">線を消す</button>
+    </div>
+    @if (_calib)
+    {
+        <CalibrationDialog OnClose="() => _calib = false" />
+    }
+}
+else
+{
+    <p class="muted">画像の上で「線」の道具を使って線を引くと、線に沿った明るさの変化と、線の長さが出ます。スケールバーに線を引けば、縮尺も決められます。</p>
+}
+
+@code {
+    private bool _calib;
+}

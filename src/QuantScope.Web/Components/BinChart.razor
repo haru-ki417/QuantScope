@@ -1,0 +1,74 @@
+@inherits ChartBase
+@* 粒の値の度数分布。線（陽性のしきい値）をドラッグで動かせる *@
+
+@if (Bins is { Count: > 0 } bins)
+{
+    var (lo, hi) = Range(bins);
+    int max = Math.Max(1, bins.Max(b => b.Count));
+    <div class="chart @(Marker is null ? "" : "draggable")" style="height:@(Height)px" @ref="Box"
+         @onpointerdown="Down" @onpointermove="Move" @onpointerup="Up" @onpointercancel="Up">
+        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" class="chart-svg" aria-hidden="true">
+            <line x1="0" y1="50" x2="1000" y2="50" class="grid" vector-effect="non-scaling-stroke" />
+            @foreach (var b in bins)
+            {
+                double x0 = bins.Count == 1 ? 420 : (b.Lower - lo) / (hi - lo) * 1000;
+                double x1 = bins.Count == 1 ? 580 : (b.Upper - lo) / (hi - lo) * 1000;
+                double h = (double)b.Count / max * 96;
+                string cls = "bar";
+                if (Split && Marker is { } mk)
+                {
+                    double mid = (b.Lower + b.Upper) / 2;
+                    cls = (Above ? mid >= mk : mid < mk) ? "bar pos" : "bar neg";
+                }
+                <rect class="@cls" x="@F(x0 + 1)" y="@F(100 - h)" width="@F(Math.Max(2, x1 - x0 - 2))" height="@F(h)" />
+            }
+            <line x1="0" y1="100" x2="1000" y2="100" class="axis" vector-effect="non-scaling-stroke" />
+            @if (Marker is { } m)
+            {
+                double x = (m - lo) / (hi - lo) * 1000;
+                <line x1="@F(x)" y1="0" x2="@F(x)" y2="100" class="marker" vector-effect="non-scaling-stroke" />
+            }
+        </svg>
+        @if (Marker is { } mm)
+        {
+            double xp = (mm - lo) / (hi - lo) * 100;
+            <span class="marker-label" style="left:@F(Math.Clamp(xp, 0, 100))%">@Workspace.Fmt(mm)</span>
+        }
+        <span class="ymax">@max</span>
+    </div>
+    <div class="chart-axis"><span>@Workspace.Fmt(lo)</span><span>@Workspace.Fmt((lo + hi) / 2)</span><span>@Workspace.Fmt(hi)</span></div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<Bin>? Bins { get; set; }
+    [Parameter] public double? Marker { get; set; }
+    [Parameter] public bool Split { get; set; }
+    [Parameter] public bool Above { get; set; } = true;
+    [Parameter] public int Height { get; set; } = 160;
+    [Parameter] public EventCallback<double> OnMarker { get; set; }
+
+    protected override bool CanDrag => Marker is not null && OnMarker.HasDelegate && Bins is { Count: > 0 };
+
+    private (double Lo, double Hi) Range(IReadOnlyList<Bin> bins)
+    {
+        double lo = bins[0].Lower, hi = bins[^1].Upper;
+        if (Marker is { } m && double.IsFinite(m))
+        {
+            lo = Math.Min(lo, m);
+            hi = Math.Max(hi, m);
+        }
+        if (hi - lo < 1e-12)
+        {
+            lo -= 0.5;
+            hi += 0.5;
+        }
+        return (lo, hi);
+    }
+
+    protected override void OnDragTo(double fraction)
+    {
+        if (Bins is not { Count: > 0 } bins) return;
+        var (lo, hi) = Range(bins);
+        OnMarker.InvokeAsync(lo + (fraction * (hi - lo)));
+    }
+}

@@ -1,0 +1,85 @@
+@inherits WsComponent
+
+@if (Step is { } step)
+{
+    var def = StepCatalog.Get(step.Kind);
+    <div class="kicker">@StepCatalog.CategoryTitle(def.Category)</div>
+    <h3>@def.Title</h3>
+    <p class="muted">@def.Summary</p>
+    @foreach (var p in def.Parameters.Where(p => p.IsUsed(step)))
+    {
+        var (min, max, _) = Ws.Range(p);
+        double v = step.Get(p.Key);
+        <div class="param">
+            @if (p.Kind == ParamKind.Choice)
+            {
+                <div class="param-label">@p.Label</div>
+                <div class="segments wrap" role="radiogroup" aria-label="@p.Label">
+                    @for (int c = 0; c < p.Choices.Count; c++)
+                    {
+                        int ci = c;
+                        <button role="radio" aria-checked="@((int)Math.Round(v) == ci)" class="seg @((int)Math.Round(v) == ci ? "on" : "")" @onclick="() => Ws.SetParam(Index, p, ci)">@p.Choices[ci]</button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="param-row">
+                    <label class="param-label" for="@($"p-{p.Key}")">@p.Label</label>
+                    <span class="num-with-unit">
+                        <input id="@($"p-{p.Key}")" class="num" type="number" inputmode="decimal" step="any" value="@ValueText(p, v, min, max)" @onchange="e => SetText(p, e.Value)" />
+                        @if (p.Unit is { } u)
+                        {
+                            <span class="unit">@u</span>
+                        }
+                    </span>
+                </div>
+                <input class="range" type="range" min="@Inv(min)" max="@Inv(Math.Max(max, min + 1e-9))" step="@Inv(Ws.SliderStep(p))" value="@Inv(v)"
+                       @oninput="e => SetText(p, e.Value)" aria-label="@p.Label" />
+            }
+            @if (p.Help is { } help)
+            {
+                <p class="muted small">@help</p>
+            }
+        </div>
+    }
+    @if (step.Kind == "crop")
+    {
+        <button class="btn" disabled="@(Ws.Roi is null)" @onclick="Ws.UseRoiForCrop" title="画像の上で「四角」の道具で範囲を選んでから押します">選んだ範囲にする</button>
+    }
+    @if (step.Kind == "threshold")
+    {
+        <p class="muted">「分布」で、しきい値の線をドラッグして決めることもできます。</p>
+    }
+    @if (def.Parameters.Count == 0)
+    {
+        <p class="muted">この手順には、決める値はありません。</p>
+    }
+    <button class="link-btn" @onclick="ShowExplain"><Icon Name="book" Small="true" /> しくみを読む</button>
+}
+
+@code {
+    [Parameter] public int Index { get; set; }
+
+    private Step? Step => Index >= 0 && Index < Ws.Recipe.Steps.Count ? Ws.Recipe.Steps[Index] : null;
+
+    private static string Inv(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+    private static string ValueText(ParamDef p, double v, double min, double max)
+    {
+        double range = max - min;
+        string fmt = p.Step >= 1 && p.Scale == ValueScale.Absolute ? "0" : range >= 1000 ? "0" : range >= 10 ? "0.#" : "0.##";
+        return v.ToString(fmt, CultureInfo.InvariantCulture);
+    }
+
+    private void SetText(ParamDef p, object? value)
+    {
+        if (double.TryParse(value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v)) Ws.SetParam(Index, p, v);
+    }
+
+    private void ShowExplain()
+    {
+        Ws.Panel = Panel.Explain;
+        Ws.Notify();
+    }
+}

@@ -1,0 +1,241 @@
+@inherits WsComponent
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+<div class="viewer-toolbar">
+    <div class="segments tools" role="radiogroup" aria-label="道具">
+        @foreach (var (t, icon, tip) in Tools)
+        {
+            if (t == Tool.Exclude)
+            {
+                <span class="seg-sep"></span>
+            }
+            <button class="seg icon @(Ws.Tool == t ? "on" : "")" role="radio" aria-checked="@(Ws.Tool == t)" title="@tip" aria-label="@tip" disabled="@(!Ws.HasImage)"
+                    @onclick="() => Ws.SetDisplay(() => Ws.Tool = t)"><Icon Name="@icon" /></button>
+        }
+    </div>
+    <div class="overlay-opts">
+        <label class="check"><input type="checkbox" checked="@Ws.ShowOverlay" @onchange="e => Ws.SetDisplay(() => Ws.ShowOverlay = (bool)e.Value!)" /><span>重ねる</span></label>
+        <label class="check"><input type="checkbox" checked="@Ws.ShowNumbers" @onchange="e => Ws.SetDisplay(() => Ws.ShowNumbers = (bool)e.Value!)" /><span>番号</span></label>
+        <label class="check"><input type="checkbox" checked="@Ws.ColorPerObject" @onchange="e => Ws.SetDisplay(() => Ws.ColorPerObject = (bool)e.Value!)" /><span>色分け</span></label>
+        <input class="range small" type="range" min="0.15" max="1" step="0.05" value="@Ws.OverlayOpacity.ToString(CultureInfo.InvariantCulture)" title="重ねる色の濃さ" aria-label="重ねる色の濃さ"
+               @oninput="e => Ws.SetDisplay(() => Ws.OverlayOpacity = double.Parse(e.Value!.ToString()!, CultureInfo.InvariantCulture))" />
+    </div>
+</div>
+
+<div class="viewer-area">
+    <div id="viewer" class="viewer-host" data-hover="hover-overlay hover-status"></div>
+    @if (Ws.IsBusy)
+    {
+        <div class="busy-bar"></div>
+    }
+    @if (!Ws.HasImage)
+    {
+        <EmptyState />
+    }
+    else
+    {
+        <div class="view-title">
+            <span>@Ws.ViewTitle</span>
+            @if (!Ws.IsShowingResult)
+            {
+                <button class="link-btn accent" @onclick="Ws.ShowResult">結果を見る</button>
+            }
+        </div>
+        @if (Ws.ShowClassLegend)
+        {
+            <div class="legend"><span class="sw pos"></span>陽性 <span class="sw neg"></span>陰性</div>
+        }
+        <div id="hover-overlay" class="hover-overlay"></div>
+        <div class="view-controls">
+            <button class="chip @(Ws.IsComparing ? "on" : "")" @onclick="() => Ws.SetDisplay(() => Ws.IsComparing = !Ws.IsComparing)"
+                    title="元の画像と今の表示を、左右に並べて比べる (C)。境目の線をドラッグして動かせます"><Icon Name="compare" Small="true" /> 比べる</button>
+            <div class="segments dark" role="radiogroup" aria-label="色の付け方">
+                @foreach (var (map, label) in Maps)
+                {
+                    <button class="seg @(Ws.ColorMap == map ? "on" : "")" @onclick="() => Ws.SetDisplay(() => Ws.ColorMap = map)">@label</button>
+                }
+            </div>
+            <button class="chip" @onclick="Fit" title="全体を表示 (F)" aria-label="全体を表示"><Icon Name="fit" Small="true" /></button>
+            <button class="chip mono" @onclick="Actual" title="等倍 (1)">1:1</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<(string Name, string Type, byte[] Bytes)> OnFileDropped { get; set; }
+
+    private static readonly (Tool, string, string)[] Tools =
+    [
+        (Tool.Pan, "pan", "移動・粒を選ぶ (V)"),
+        (Tool.Rect, "rect", "四角の範囲 (R)。Shift で正方形"),
+        (Tool.Ellipse, "ellipse", "楕円の範囲 (E)。Shift で円"),
+        (Tool.Polygon, "polygon", "多角形の範囲 (P)。タップ・クリックで頂点、最初の点かダブルクリックで閉じる"),
+        (Tool.Line, "line", "線 (L)。長さ・明るさの変化・縮尺"),
+        (Tool.Exclude, "exclude", "粒を除く (X)。タップ・クリックした粒を数から外す（もう一度で戻す）"),
+    ];
+
+    private static readonly (ColorMap, string)[] Maps = [(ColorMap.Gray, "白黒"), (ColorMap.Fire, "ファイア"), (ColorMap.Viridis, "Viridis")];
+
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<ViewerPane>? _self;
+    private object? _imageKey, _overlayKey, _compareKey;
+    private bool _pushing, _again;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Ws.ViewChanged += OnViewChanged;
+        ViewerCommands.Fit = () => _ = Fit();
+        ViewerCommands.Actual = () => _ = Actual();
+        ViewerCommands.CenterOn = (x, y, s) => _ = _module?.InvokeVoidAsync("centerOn", "viewer", x, y, s).AsTask();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/viewer.js");
+        _self = DotNetObjectReference.Create(this);
+        await _module.InvokeVoidAsync("create", "viewer", _self);
+        await Push();
+    }
+
+    private void OnViewChanged() => _ = InvokeAsync(Push);
+
+    /// <summary>表示する画像・重ね合わせ・図形をブラウザーの表示に送る（変わったものだけ）</summary>
+    private async Task Push()
+    {
+        if (_module is null) return;
+        if (_pushing)
+        {
+            _again = true;
+            return;
+        }
+        _pushing = true;
+        try
+        {
+            do
+            {
+                _again = false;
+                await PushOnce(_module);
+            }
+            while (_again);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        finally
+        {
+            _pushing = false;
+        }
+    }
+
+    private async Task PushOnce(IJSObjectReference js)
+    {
+        var img = Ws.DisplayRaster;
+        if (img is null)
+        {
+            _imageKey = _overlayKey = _compareKey = null;
+            await js.InvokeVoidAsync("clear", "viewer");
+            return;
+        }
+        var imageKey = (img, Ws.ColorMap);
+        if (!Equals(imageKey, _imageKey))
+        {
+            _imageKey = imageKey;
+            await js.InvokeVoidAsync("setImage", "viewer", img.Width, img.Height, Frames.Image(img, Ws.ColorMap));
+        }
+        var st = Ws.ViewState;
+        var overlayKey = (st?.Mask, Ws.OverlayUsesLabels ? Ws.Analysis : null, Ws.ColorPerObject, Ws.SelectedParticle?.Id ?? 0);
+        if (!Equals(overlayKey, _overlayKey))
+        {
+            _overlayKey = overlayKey;
+            var over = Frames.Overlay(Ws);
+            await js.InvokeVoidAsync("setOverlay", "viewer", st?.Mask?.Width ?? 0, st?.Mask?.Height ?? 0, over);
+        }
+        var cmp = Ws.IsComparing && st is not null && st.Original.Width == img.Width && st.Original.Height == img.Height ? st.Original : null;
+        var compareKey = (cmp, Ws.ColorMap);
+        if (!Equals(compareKey, _compareKey))
+        {
+            _compareKey = compareKey;
+            await js.InvokeVoidAsync("setCompare", "viewer", img.Width, img.Height, cmp is null ? null : Frames.Image(cmp, Ws.ColorMap));
+        }
+        var cal = Ws.Calibration;
+        await js.InvokeVoidAsync("setOptions", "viewer", new
+        {
+            showOverlay = Ws.ShowOverlay,
+            opacity = Ws.OverlayOpacity,
+            showNumbers = Ws.ShowNumbers,
+            tool = Ws.Tool.ToString().ToLowerInvariant(),
+            comparing = Ws.IsComparing,
+            unit = cal.IsCalibrated ? cal.Unit : "px",
+            upp = cal.UnitsPerPixel,
+        });
+        var particles = Ws.OverlayUsesLabels
+            ? Ws.Analysis!.Particles.Select(p => new double[] { p.Id, p.CentroidX, p.CentroidY, Math.Max(p.BoundsWidth, p.BoundsHeight) }).ToArray()
+            : [];
+        var sel = Ws.OverlayUsesLabels && Ws.SelectedParticle is { } s ? new double[] { s.BoundsX, s.BoundsY, s.BoundsWidth, s.BoundsHeight } : null;
+        object? roi = Ws.Roi is { } r
+            ? new { shape = r.Shape switch { RoiShape.Ellipse => "ellipse", RoiShape.Polygon => "polygon", _ => "rect" }, points = r.Points.Select(p => new[] { p.X, p.Y }).ToArray() }
+            : null;
+        var line = Ws.Line is { } l ? new[] { l.A.X, l.A.Y, l.B.X, l.B.Y } : null;
+        var matches = Ws.Matches.Select(m => new double[] { m.X, m.Y, m.Width, m.Height, m.Score }).ToArray();
+        await js.InvokeVoidAsync("setShapes", "viewer", new { particles, selected = sel, roi, line, matches });
+    }
+
+    private async Task Fit()
+    {
+        if (_module is not null) await _module.InvokeVoidAsync("fit", "viewer");
+    }
+
+    private async Task Actual()
+    {
+        if (_module is not null) await _module.InvokeVoidAsync("zoomTo", "viewer", 1.0);
+    }
+
+    // ---------------------------------------------------------------- ブラウザーの表示から
+
+    [JSInvokable] public string? HoverText(double x, double y) => Ws.HoverText(x, y);
+
+    [JSInvokable] public void OnClick(double x, double y) => Ws.SelectParticleAt(new PointD(x, y));
+
+    [JSInvokable] public void OnExclude(double x, double y) => Ws.ToggleExcludeAt(new PointD(x, y));
+
+    [JSInvokable]
+    public void OnRoi(string? shape, double[]? v)
+    {
+        if (shape is null || v is null)
+        {
+            Ws.SetRoi(null);
+            return;
+        }
+        Ws.SetRoi(shape switch
+        {
+            "ellipse" => Roi.Ellipse(v[0], v[1], v[2], v[3]),
+            "polygon" => Roi.Polygon(Enumerable.Range(0, v.Length / 2).Select(i => new PointD(v[i * 2], v[(i * 2) + 1]))),
+            _ => Roi.Rectangle(v[0], v[1], v[2], v[3]),
+        });
+    }
+
+    [JSInvokable] public void OnLine(double ax, double ay, double bx, double by) => Ws.SetLine(new MeasureLine(new PointD(ax, ay), new PointD(bx, by)));
+
+    [JSInvokable] public Task OnDrop(string name, string type, byte[] bytes) => OnFileDropped.InvokeAsync((name, type, bytes));
+
+    public async ValueTask DisposeAsync()
+    {
+        Ws.ViewChanged -= OnViewChanged;
+        Dispose();
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("dispose", "viewer");
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+        _self?.Dispose();
+    }
+}

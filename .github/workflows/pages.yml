@@ -1,0 +1,55 @@
+# ブラウザー版（Web 版）を作って GitHub Pages で公開する。
+# 画像処理を速くするため WebAssembly にあらかじめ翻訳（AOT）し、ダウンロードを小さくするため .gz も置く。
+name: Web
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Install WebAssembly tools
+        run: dotnet workload install wasm-tools
+
+      - name: Test (Core)
+        run: dotnet test --project tests/QuantScope.Tests --configuration Release
+
+      - name: Publish
+        run: dotnet publish src/QuantScope.Web -c Release -o out
+
+      - name: Prepare site
+        run: |
+          cp out/wwwroot/index.html out/wwwroot/404.html
+          touch out/wwwroot/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: out/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

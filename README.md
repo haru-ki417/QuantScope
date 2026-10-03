@@ -7,6 +7,9 @@
 
 > **研究・学習用のソフトウェアです。** 医療機器ではなく、診断には使えません。
 
+**▶ ブラウザーで開く: https://haru-ki417.github.io/QuantScope/** 　スマホ・タブレット・パソコンで、インストールなしで使えます（画像はブラウザーの中だけで処理し、どこにも送りません）。
+Windows 版は [Releases](../../releases) から。
+
 ![蛍光の核を数えた結果（見本の画像）](docs/screenshots/02-nuclei-result.png)
 
 ## できること
@@ -103,6 +106,18 @@
 
 ## 使ってみる
 
+### ブラウザー版（スマホ・タブレット・パソコン）
+
+https://haru-ki417.github.io/QuantScope/ を開くだけで使えます。Windows 版と同じ計算の部品（`QuantScope.Core`）を WebAssembly にして、画面だけをブラウザー用に作りました。
+
+- 画像の読み込み・計算・書き出しは、すべてブラウザーの中で行い、画像はどこにも送りません
+- 16 bit の PNG・TIFF（圧縮なし・LZW・Deflate）と DICOM は、自作の読み込みで 16 bit のまま読みます
+- スマホでは 2 本の指で拡大・移動、タップで粒を選べます。ホーム画面に追加すると、オフラインでも開けます
+- 一括処理は、選んだ画像の結果（CSV と確かめ用の画像）を zip にまとめて書き出します
+- AI の説明は、API キーをブラウザーに置かないため Windows 版だけの機能です
+
+### Windows 版
+
 - 配布版: [Releases](../../releases) の zip を展開して `QuantScope.exe` を起動（.NET のインストール不要）
 - 「見本」から、蛍光の核・染色した組織・形の見本を開くと、手順の例が入った状態で試せます
 - 実際の顕微鏡の画像で試すなら、[Broad Bioimage Benchmark Collection](https://bbbc.broadinstitute.org/) などの公開データが使えます。データセットごとに利用条件が違うので、各ページで確認してください
@@ -125,6 +140,7 @@
 dotnet build QuantScope.slnx
 dotnet test --solution QuantScope.slnx
 dotnet run --project src/QuantScope.App
+dotnet run --project src/QuantScope.Web      # ブラウザー版（開発用のサーバー）
 
 # 見本で画面を一通り開き、画像に保存（docs/screenshots の作り方。一括処理と画像の読み書きも確かめる）
 QuantScope.exe --snapshots docs/screenshots
@@ -139,6 +155,7 @@ src/QuantScope.Core/   画像処理と計測（画面に依存しない。テス
   Reporting/   解析レポート（HTML）
   Dicom/ Ai/ Samples/ Rendering/
 src/QuantScope.App/    WPF の画面（MVVM）
+src/QuantScope.Web/    ブラウザー版の画面（Blazor WebAssembly。GitHub Pages で公開）
 tests/QuantScope.Tests/
 ```
 

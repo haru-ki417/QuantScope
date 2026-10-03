@@ -1,0 +1,151 @@
+@inherits WsComponent
+
+@{ var a = Ws.Analysis; var s = a?.Summary; }
+<div class="kpis">
+    <div class="kpi"><span class="kpi-label">数</span><span class="kpi-value accent">@(s?.Count.ToString("N0", CultureInfo.InvariantCulture) ?? "–")</span></div>
+    <div class="kpi"><span class="kpi-label">占有率（面積の割合）</span><span class="kpi-value">@(s is null ? "–" : s.AreaFraction.ToString("0.00", CultureInfo.InvariantCulture) + " %")</span></div>
+    <div class="kpi"><span class="kpi-label">平均の面積</span><span class="kpi-value sm">@(s is null ? "–" : $"{Fmt(s.MeanArea)} {s.AreaUnit}")</span></div>
+    @if (s?.Positive is not null)
+    {
+        <div class="kpi"><span class="kpi-label">陽性率</span><span class="kpi-value sm">@s.PositivePercent.ToString("0.0", CultureInfo.InvariantCulture) %<small> @s.PositiveCount / @s.Count</small></span></div>
+    }
+    else
+    {
+        <div class="kpi"><span class="kpi-label">平均の円形度</span><span class="kpi-value sm">@(s is null ? "–" : s.MeanCircularity.ToString("0.000", CultureInfo.InvariantCulture))</span></div>
+    }
+</div>
+
+@if (s is not null)
+{
+    <p class="muted detail">
+        面積の合計 @Fmt(s.TotalArea) @s.AreaUnit　中央値 @Fmt(s.MedianArea)　標準偏差 @Fmt(s.StdArea)<br />
+        調べた範囲 @Fmt(s.AnalyzedArea) @s.AreaUnit　密度 @s.Density.ToString("G3", CultureInfo.InvariantCulture) 個/@s.AreaUnit@(Ws.Roi is null ? "" : "（範囲の中だけ）")
+        @if (s.ExcludedCount > 0)
+        {
+            <br />@($"手で除いた粒 {s.ExcludedCount} 個（数に入れていません）")
+        }
+    </p>
+    @if (s.Count == 0)
+    {
+        <p class="warn">対象が見つかりませんでした。しきい値や、計測の条件（面積の下限）を見直してください。</p>
+    }
+}
+else if (Ws.HasImage)
+{
+    <p class="warn">@(Ws.Recipe.Steps.Count == 0 ? "「手順を足す」から処理を選んでください。" : "手順に「二値化」などを入れて対象を選ぶと、数えて測れます。")</p>
+}
+else
+{
+    <p class="muted">画像を開くと、ここに結果が出ます。</p>
+}
+
+@if (Ws.Roi is not null)
+{
+    <div class="card soft">
+        <div class="card-head"><b>選んだ範囲の中だけを解析しています</b><button class="link-btn" @onclick="() => Ws.SetRoi(null)">範囲を消す</button></div>
+        <p class="muted">@Ws.RoiText</p>
+        <div class="param-row">
+            <span class="param-label">似ている度合い</span>
+            <input class="range" type="range" min="0.4" max="0.98" step="0.01" value="@Ws.SimilarityThreshold.ToString(CultureInfo.InvariantCulture)"
+                   @onchange="e => Ws.SimilarityThreshold = double.Parse(e.Value!.ToString()!, CultureInfo.InvariantCulture)" aria-label="似ている度合い" />
+            <button class="btn" @onclick="Ws.FindSimilarAsync" title="範囲の中の模様と似ている所を、画像全体から探します">似た場所を探す</button>
+        </div>
+    </div>
+}
+
+@if (Ws.SelectedParticle is { } sel)
+{
+    <div class="card">
+        <div class="card-head">
+            <b class="accent">粒 @sel.Id</b>
+            <span class="card-tools">
+                <button class="link-btn" @onclick="() => ViewerCommands.CenterOn?.Invoke(sel.CentroidX, sel.CentroidY, Math.Max(sel.BoundsWidth, sel.BoundsHeight))"><Icon Name="eye" Small="true" /> 表示</button>
+                <button class="link-btn" @onclick="Ws.ExcludeSelected" title="この粒を数から外す (Delete)"><Icon Name="exclude" Small="true" /> 除く</button>
+                <button class="icon-btn tiny" @onclick="() => Ws.SelectParticle(null)" aria-label="選ぶのをやめる"><Icon Name="x" Small="true" /></button>
+            </span>
+        </div>
+        <dl class="details-grid">
+            @foreach (var r in Ws.SelectedDetails)
+            {
+                <div><dt>@r.Label</dt><dd>@r.Value</dd></div>
+            }
+        </dl>
+    </div>
+}
+
+<div class="table-head">
+    <h3>粒ごとの値 @if (a is not null) { <small class="muted">@a.Particles.Count 個</small> }</h3>
+    <span>
+        <button class="link-btn" disabled="@(a is null)" @onclick="Copy" title="すべての行と列をコピー（Excel などに貼り付けられます）"><Icon Name="copy" Small="true" /> コピー</button>
+    </span>
+</div>
+@if (a is not null && a.Particles.Count > 0)
+{
+    <div class="table-wrap">
+        <table class="grid">
+            <thead>
+                <tr>
+                    @Header("id", "番号")
+                    @Header("area", $"面積 {s!.AreaUnit}")
+                    @Header("circularity", "円形度")
+                    @Header("feret", $"フェレ径 {s.LengthUnit}")
+                    @Header("mean", s.IntensityLabel)
+                    @if (s.Positive is not null)
+                    {
+                        @Header("positive", "判定")
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Ws.SortedParticles.Take(_rows))
+                {
+                    <tr class="@(p == Ws.SelectedParticle ? "on" : "")" @onclick="() => Pick(p)">
+                        <td>@p.Id</td>
+                        <td>@Fmt(p.Area)</td>
+                        <td>@p.Circularity.ToString("0.000", CultureInfo.InvariantCulture)</td>
+                        <td>@Fmt(p.Feret)</td>
+                        <td>@Fmt(p.MeanIntensity)</td>
+                        @if (s.Positive is not null)
+                        {
+                            <td class="@(p.Positive == true ? "pos" : "muted")">@(p.Positive == true ? "陽性" : "陰性")</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (Ws.SortedParticles.Count > _rows)
+        {
+            <button class="btn block" @onclick="() => _rows += 300">さらに表示（残り @(Ws.SortedParticles.Count - _rows) 行）</button>
+        }
+    </div>
+}
+@if (_copied is not null)
+{
+    <p class="muted small">@_copied</p>
+}
+
+@code {
+    [Inject] private BrowserIo Io { get; set; } = default!;
+    private int _rows = 300;
+    private string? _copied;
+
+    private RenderFragment Header(string key, string title) => __builder =>
+    {
+        bool on = Ws.SortKey == key;
+        <th class="@(on ? "sorted" : "")" @onclick="() => Ws.SortBy(key)" title="並べ替え">@title@(on ? (Ws.SortDescending ? " ▾" : " ▴") : "")</th>
+    };
+
+    private void Pick(Particle p)
+    {
+        Ws.SelectParticle(p);
+        ViewerCommands.CenterOn?.Invoke(p.CentroidX, p.CentroidY, Math.Max(p.BoundsWidth, p.BoundsHeight));
+    }
+
+    private async Task Copy()
+    {
+        if (Ws.Analysis is not { } a) return;
+        var s = a.Summary;
+        bool ok = await Io.CopyTextAsync(CsvExport.Particles(a.Particles.Select(p => ((string?)null, p)), s.LengthUnit, s.AreaUnit, s.IntensityLabel, '\t'));
+        _copied = ok ? $"{a.Particles.Count} 行をコピーしました。Excel などに貼り付けられます。" : "コピーできませんでした（ブラウザーの設定で止められています）。";
+    }
+}

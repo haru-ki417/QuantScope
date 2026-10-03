@@ -1,0 +1,120 @@
+@inherits WsComponent
+
+<div class="panel-head">
+    <div class="row">
+        <h2>手順（レシピ）</h2>
+        <div class="tools">
+            <button class="icon-btn" disabled="@(!Ws.CanUndo)" @onclick="Ws.Undo" title="元に戻す (Ctrl+Z)"><Icon Name="undo" /></button>
+            <button class="icon-btn" disabled="@(!Ws.CanRedo)" @onclick="Ws.Redo" title="やり直す (Ctrl+Y)"><Icon Name="redo" /></button>
+            <span class="sep"></span>
+            <label class="icon-btn" for="open-recipe" title="レシピを開く"><Icon Name="folder" /></label>
+            <button class="icon-btn" disabled="@(Ws.Recipe.Steps.Count == 0)" @onclick="Clear" title="手順をすべて消す"><Icon Name="trash" /></button>
+        </div>
+    </div>
+    <input class="text" value="@Ws.Recipe.Name" @onchange="e => Ws.RenameRecipe(e.Value?.ToString() ?? string.Empty)" aria-label="レシピの名前" />
+</div>
+
+<div class="pipeline">
+    <button class="pipe-row @(Ws.IsInputSelected ? "on" : "")" @onclick="Ws.ShowInput" title="処理する前の画像を見る">
+        <span class="dot ghost"><Icon Name="image" Small="true" /></span>
+        <span class="pipe-title muted">元の画像</span>
+    </button>
+    <ol class="steps">
+        @for (int i = 0; i < Ws.Recipe.Steps.Count; i++)
+        {
+            int idx = i;
+            var step = Ws.Recipe.Steps[i];
+            var def = StepCatalog.Get(step.Kind);
+            var o = idx < Ws.Outcomes.Count ? Ws.Outcomes[idx] : null;
+            bool on = Ws.SelectedStep == idx;
+            <li class="step @(on ? "on" : "") @(step.Enabled ? "" : "off")">
+                <button class="step-main" @onclick="() => Ws.SelectStep(idx)">
+                    <span class="dot">@(idx + 1)</span>
+                    <span class="step-text">
+                        <span class="pipe-title">@def.Title</span>
+                        @if (o?.Warning is { } w)
+                        {
+                            <span class="step-info warn">@w</span>
+                        }
+                        else if (o?.Info is { } info && step.Enabled)
+                        {
+                            <span class="step-info">@info</span>
+                        }
+                    </span>
+                </button>
+                @if (on)
+                {
+                    <div class="step-actions">
+                        <button class="icon-btn tiny" @onclick="() => Ws.MoveStep(idx, -1)" disabled="@(idx == 0)" title="上へ" aria-label="上へ"><Icon Name="up" Small="true" /></button>
+                        <button class="icon-btn tiny" @onclick="() => Ws.MoveStep(idx, 1)" disabled="@(idx == Ws.Recipe.Steps.Count - 1)" title="下へ" aria-label="下へ"><Icon Name="down" Small="true" /></button>
+                        <button class="icon-btn tiny" @onclick="() => Ws.DuplicateStep(idx)" title="複製" aria-label="複製"><Icon Name="copy" Small="true" /></button>
+                        <button class="icon-btn tiny" @onclick="() => Ws.RemoveStep(idx)" title="消す (Delete)" aria-label="消す"><Icon Name="trash" Small="true" /></button>
+                    </div>
+                }
+                <span class="step-tools">
+                    <label class="switch" title="オン・オフ（オフにすると、この手順を飛ばします）">
+                        <input type="checkbox" checked="@step.Enabled" @onchange="() => Ws.ToggleStep(idx)" aria-label="@($"{def.Title} のオン・オフ")" />
+                        <span></span>
+                    </label>
+                </span>
+            </li>
+        }
+    </ol>
+    @if (Ws.Recipe.Steps.Count == 0)
+    {
+        <p class="hint">まだ手順がありません。「手順を足す」から、ぼかし・二値化などを順に足していきます。見本を開くと、手順の例が入ります。</p>
+    }
+    <div class="add-host">
+        <button class="btn outline block" @onclick="() => _adding = !_adding"><Icon Name="plus" /> 手順を足す</button>
+        @if (_adding)
+        {
+            <div class="menu-backdrop" @onclick="() => _adding = false"></div>
+            <div class="add-menu" @onclick:stopPropagation="true">
+                @foreach (var g in StepCatalog.All.GroupBy(d => d.Category))
+                {
+                    <div class="add-group">
+                        <div class="add-group-title">@StepCatalog.CategoryTitle(g.Key)</div>
+                        @foreach (var d in g)
+                        {
+                            <button class="menu-item" title="@d.Summary" @onclick="() => Add(d.Id)">@d.Title</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    <button class="pipe-row measure @(Ws.IsShowingResult && Ws.HasImage ? "on" : "")" @onclick="Ws.ShowResult" title="計測の条件を決め、結果を見る">
+        <span class="dot accent"><Icon Name="measure" Small="true" /></span>
+        <span class="step-text">
+            <span class="pipe-title">計測</span>
+            <span class="step-info">@Ws.MeasureSummary</span>
+        </span>
+        <span class="count">@(Ws.Analysis?.Summary.Count.ToString("N0", CultureInfo.InvariantCulture) ?? "–")</span>
+    </button>
+</div>
+
+<div class="details">
+    @if (Ws.SelectedStep is { } sel && sel < Ws.Recipe.Steps.Count)
+    {
+        <ParamEditor Index="sel" />
+    }
+    else
+    {
+        <MeasureEditor />
+    }
+</div>
+
+@code {
+    private bool _adding;
+
+    private void Add(string id)
+    {
+        _adding = false;
+        Ws.AddStep(id);
+    }
+
+    private void Clear()
+    {
+        Ws.ClearSteps();
+    }
+}

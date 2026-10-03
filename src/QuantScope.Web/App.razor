@@ -1,0 +1,344 @@
+@implements IDisposable
+@inject Workspace Ws
+@inject BrowserIo Io
+
+<div class="shell" data-panel="@Ws.Panel.ToString().ToLowerInvariant()" data-empty="@(Ws.HasImage ? "no" : "yes")">
+    <header class="topbar">
+        <div class="brand">
+            <svg class="logo" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="11" cy="11" r="8.5" fill="none" stroke="var(--accent)" stroke-width="3" />
+                <line x1="18" y1="18" x2="25.5" y2="25.5" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" />
+                <circle cx="9" cy="9" r="3" fill="var(--mask)" /><circle cx="14" cy="13" r="2" fill="var(--mask)" />
+            </svg>
+            <span class="brand-name">QuantScope</span>
+            <span class="brand-web">Web</span>
+        </div>
+        @if (Ws.HasImage)
+        {
+            <div class="file-info">
+                <div class="file-name" title="@Ws.FileName">@Ws.FileName</div>
+                <div class="file-desc">@Ws.ImageDescription</div>
+            </div>
+        }
+        <div class="top-actions">
+            <div class="menu-host">
+                <button class="btn" @onclick="() => Toggle(Menu.Samples)" aria-haspopup="true" aria-expanded="@(_menu == Menu.Samples)">
+                    <Icon Name="sample" /><span class="hide-sm">見本</span><Icon Name="chevron" Small="true" />
+                </button>
+                @if (_menu == Menu.Samples)
+                {
+                    <div class="menu" @onclick:stopPropagation="true">
+                        @foreach (var s in QuantScope.Core.Samples.SampleImages.List)
+                        {
+                            <button class="menu-item" @onclick="() => OpenSample(s.Id)">@s.Title</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="split">
+                <label class="btn primary" for="open-file" title="画像を開く（PNG・JPEG・TIFF・BMP・GIF・WebP・DICOM）"><Icon Name="open" /><span>開く</span></label>
+                <button class="btn primary narrow" @onclick="() => Toggle(Menu.Open)" aria-label="ほかの開き方"><Icon Name="chevron" Small="true" /></button>
+                @if (_menu == Menu.Open)
+                {
+                    <div class="menu" @onclick:stopPropagation="true">
+                        <label class="menu-item" for="open-file" @onclick="CloseMenu">画像を開く…<small>Ctrl+O</small></label>
+                        <label class="menu-item" for="open-recipe" @onclick="CloseMenu">レシピを開く…<small>保存した手順と計測の条件</small></label>
+                    </div>
+                }
+            </div>
+            <div class="menu-host">
+                <button class="btn" disabled="@(!Ws.HasImage)" @onclick="() => Toggle(Menu.Save)"><Icon Name="save" /><span class="hide-sm">保存</span><Icon Name="chevron" Small="true" /></button>
+                @if (_menu == Menu.Save)
+                {
+                    <div class="menu wide right" @onclick:stopPropagation="true">
+                        <button class="menu-item" disabled="@(Ws.Analysis is null)" @onclick="SaveReport"><b>解析レポート（HTML）</b><small>画像・手順と値・結果・分布を 1 つのファイルに。印刷して PDF にも</small></button>
+                        <button class="menu-item" disabled="@(Ws.Analysis is null)" @onclick="SaveCsv">計測結果（CSV）<small>粒ごとの値。Excel で開けます</small></button>
+                        <hr />
+                        <button class="menu-item" @onclick="SaveOverlay">重ねた画像（PNG）<small>画像に、数えた粒を色で重ねたもの</small></button>
+                        <button class="menu-item" @onclick="SaveView">表示している画像（PNG）<small>処理したあとの画像</small></button>
+                        <button class="menu-item" disabled="@(Ws.ViewState?.Mask is null)" @onclick="SaveMask">マスク（PNG）<small>対象を白、背景を黒にした画像</small></button>
+                        <hr />
+                        <button class="menu-item" @onclick="SaveRecipe">レシピ（JSON）<small>同じ解析を、ほかの画像にもかけられます</small></button>
+                    </div>
+                }
+            </div>
+            <button class="btn" @onclick="() => _dialog = Dialog.Batch" title="たくさんの画像に、同じ手順をかけて測る"><Icon Name="batch" /><span class="hide-sm">一括処理</span></button>
+            <button class="icon-btn" @onclick="() => _dialog = Dialog.About" title="このアプリについて"><Icon Name="info" /></button>
+        </div>
+    </header>
+
+    <InputFile id="open-file" class="hidden-input" OnChange="OnOpenFile" accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.gif,.webp,.dcm,.dicom,image/*,application/dicom" />
+    <InputFile id="open-recipe" class="hidden-input" OnChange="OnOpenRecipe" accept=".json,application/json" />
+
+    <aside class="left">
+        <StepsPanel />
+    </aside>
+
+    <main class="center">
+        <ViewerPane OnFileDropped="OpenBytes" />
+    </main>
+
+    <nav class="mobile-tabs" aria-label="表示の切りかえ">
+        @foreach (var (p, label) in MobileTabs)
+        {
+            <button class="@(Ws.Panel == p ? "on" : "")" @onclick="() => SetPanel(p)">@label</button>
+        }
+    </nav>
+
+    <aside class="right">
+        <nav class="tabs" aria-label="右の表示">
+            @foreach (var (p, label) in RightTabs)
+            {
+                <button class="@(RightPanel == p ? "on" : "")" @onclick="() => SetPanel(p)">@label</button>
+            }
+        </nav>
+        <div class="right-body">
+            @switch (RightPanel)
+            {
+                case Panel.Distribution: <DistributionPanel />; break;
+                case Panel.Line: <LinePanel />; break;
+                case Panel.Explain: <ExplainPanel />; break;
+                default: <ResultsPanel />; break;
+            }
+        </div>
+    </aside>
+
+    <footer class="statusbar">
+        <span class="status-text">@Ws.Status</span>
+        <span id="hover-status" class="hover-status"></span>
+        <button class="link-btn" disabled="@(!Ws.HasImage)" @onclick="() => _dialog = Dialog.Calibration" title="縮尺（1 px の長さ）を決める"><Icon Name="ruler" Small="true" /> @Ws.Calibration.ToString()</button>
+    </footer>
+
+    @if (_menu != Menu.None)
+    {
+        <div class="menu-backdrop" @onclick="CloseMenu"></div>
+    }
+
+    @switch (_dialog)
+    {
+        case Dialog.Calibration: <CalibrationDialog OnClose="CloseDialog" />; break;
+        case Dialog.Batch: <BatchDialog OnClose="CloseDialog" />; break;
+        case Dialog.About: <AboutDialog OnClose="CloseDialog" />; break;
+    }
+
+    @if (_error is not null)
+    {
+        <div class="toast error" role="alert">@_error <button class="link-btn" @onclick="() => _error = null">閉じる</button></div>
+    }
+</div>
+
+@code {
+    private enum Menu { None, Samples, Open, Save }
+    private enum Dialog { None, Calibration, Batch, About }
+
+    private Menu _menu;
+    private Dialog _dialog;
+    private string? _error;
+    private DotNetObjectReference<App>? _self;
+
+    private static readonly (Panel, string)[] MobileTabs =
+        [(Panel.Steps, "手順"), (Panel.Results, "結果"), (Panel.Distribution, "分布"), (Panel.Line, "線"), (Panel.Explain, "しくみ")];
+
+    private static readonly (Panel, string)[] RightTabs =
+        [(Panel.Results, "結果"), (Panel.Distribution, "分布"), (Panel.Line, "線"), (Panel.Explain, "しくみ")];
+
+    /// <summary>広い画面では、右の列に「手順」は出さない（左の列にある）</summary>
+    private Panel RightPanel => Ws.Panel == Panel.Steps ? Panel.Results : Ws.Panel;
+
+    protected override void OnInitialized()
+    {
+        Ws.Changed += OnChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _self = DotNetObjectReference.Create(this);
+        await Io.ListenKeysAsync(_self);
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void Toggle(Menu m) => _menu = _menu == m ? Menu.None : m;
+    private void CloseMenu() => _menu = Menu.None;
+    private void CloseDialog() => _dialog = Dialog.None;
+    private void SetPanel(Panel p) { Ws.Panel = p; Ws.Notify(); }
+
+    private void OpenSample(string id)
+    {
+        _menu = Menu.None;
+        Ws.OpenSample(id);
+    }
+
+    [JSInvokable]
+    public async Task OnKey(string key)
+    {
+        switch (key)
+        {
+            case "open": await Io.ClickAsync("open-file"); break;
+            case "save": await SaveCsv(); break;
+            case "undo": Ws.Undo(); break;
+            case "redo": Ws.Redo(); break;
+            case "pan": Ws.SetDisplay(() => Ws.Tool = Tool.Pan); break;
+            case "rect": Ws.SetDisplay(() => Ws.Tool = Tool.Rect); break;
+            case "ellipse": Ws.SetDisplay(() => Ws.Tool = Tool.Ellipse); break;
+            case "polygon": Ws.SetDisplay(() => Ws.Tool = Tool.Polygon); break;
+            case "line": Ws.SetDisplay(() => Ws.Tool = Tool.Line); break;
+            case "exclude": Ws.SetDisplay(() => Ws.Tool = Tool.Exclude); break;
+            case "compare": Ws.SetDisplay(() => Ws.IsComparing = !Ws.IsComparing); break;
+            case "fit": ViewerCommands.Fit?.Invoke(); break;
+            case "actual": ViewerCommands.Actual?.Invoke(); break;
+            case "delete":
+                if (Ws.SelectedParticle is not null) Ws.ExcludeSelected();
+                else if (Ws.SelectedStep is { } i) Ws.RemoveStep(i);
+                break;
+        }
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- 開く
+
+    private const long MaxFileBytes = 400L * 1024 * 1024;
+
+    private async Task OnOpenFile(InputFileChangeEventArgs e)
+    {
+        _menu = Menu.None;
+        try
+        {
+            var f = e.File;
+            if (f.Size > MaxFileBytes) throw new InvalidDataException("ファイルが大きすぎます（400 MB まで）。");
+            Ws.Status = $"{f.Name} を読んでいます…";
+            Ws.Notify();
+            using var ms = new MemoryStream();
+            await using (var s = f.OpenReadStream(MaxFileBytes)) await s.CopyToAsync(ms);
+            await OpenBytes((f.Name, f.ContentType, ms.ToArray()));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or JSException)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private async Task OpenBytes((string Name, string Type, byte[] Bytes) file)
+    {
+        try
+        {
+            if (file.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                LoadRecipe(file.Bytes);
+                return;
+            }
+            var img = await ImageLoader.LoadAsync(file.Bytes, file.Name, file.Type, Io);
+            Ws.SetImage(img, file.Name);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or JSException or FellowOakDicom.DicomException)
+        {
+            ShowError($"{file.Name} を開けませんでした。{ex.Message}");
+        }
+    }
+
+    private async Task OnOpenRecipe(InputFileChangeEventArgs e)
+    {
+        _menu = Menu.None;
+        try
+        {
+            using var ms = new MemoryStream();
+            await using (var s = e.File.OpenReadStream(5 * 1024 * 1024)) await s.CopyToAsync(ms);
+            LoadRecipe(ms.ToArray());
+        }
+        catch (IOException ex)
+        {
+            ShowError(ex.Message);
+        }
+    }
+
+    private void LoadRecipe(byte[] bytes)
+    {
+        try
+        {
+            Ws.ApplyRecipe(Recipe.FromJson(System.Text.Encoding.UTF8.GetString(bytes)));
+            Ws.Status = $"レシピ「{Ws.Recipe.Name}」を読み込みました。";
+            Ws.Notify();
+        }
+        catch (InvalidDataException ex)
+        {
+            ShowError("レシピを読み込めませんでした。" + ex.Message);
+        }
+    }
+
+    private void ShowError(string message)
+    {
+        _error = message;
+        Ws.Status = message;
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- 保存
+
+    private string BaseName => Path.GetFileNameWithoutExtension(Ws.FileName ?? "quantscope");
+
+    private async Task SaveCsv()
+    {
+        _menu = Menu.None;
+        if (Ws.Analysis is not { } a) return;
+        var s = a.Summary;
+        string csv = CsvExport.Particles(a.Particles.Select(p => ((string?)null, p)), s.LengthUnit, s.AreaUnit, s.IntensityLabel);
+        await Io.DownloadAsync($"{BaseName}_計測.csv", "text/csv", [.. CsvExport.Encoding.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(csv)]);
+        Ws.Status = "計測結果（CSV）を書き出しました。";
+    }
+
+    private async Task SaveRecipe()
+    {
+        _menu = Menu.None;
+        await Io.DownloadAsync($"{Ws.Recipe.Name}.json", "application/json", System.Text.Encoding.UTF8.GetBytes(Ws.Recipe.ToJson()));
+        Ws.Status = "レシピを書き出しました。";
+    }
+
+    private async Task SaveView()
+    {
+        _menu = Menu.None;
+        var img = Ws.ViewState?.Image ?? Ws.Input;
+        if (img is null) return;
+        var png = await Io.EncodePngAsync(img.Width, img.Height, Frames.Image(img, Ws.ColorMap), 0);
+        await Io.DownloadAsync($"{BaseName}_処理後.png", "image/png", png);
+    }
+
+    private async Task SaveOverlay()
+    {
+        _menu = Menu.None;
+        var st = Ws.ViewState;
+        if (st is null) return;
+        var rgba = Frames.Composite(st, Ws.OverlayUsesLabels ? Ws.Analysis : null, Ws.ColorMap, Ws.ColorPerObject, Ws.OverlayOpacity);
+        var img = st.Original.Width == st.Image.Width ? st.Original : st.Image;
+        var png = await Io.EncodePngAsync(img.Width, img.Height, rgba, 0);
+        await Io.DownloadAsync($"{BaseName}_重ね.png", "image/png", png);
+    }
+
+    private async Task SaveMask()
+    {
+        _menu = Menu.None;
+        var m = Ws.ViewState?.Mask;
+        if (m is null) return;
+        var png = await Io.EncodePngAsync(m.Width, m.Height, Frames.ToRgba(DisplayRenderer.MaskToBgra(m)), 0);
+        await Io.DownloadAsync($"{BaseName}_マスク.png", "image/png", png);
+    }
+
+    private async Task SaveReport()
+    {
+        _menu = Menu.None;
+        Ws.Status = "レポートを作っています…";
+        Ws.Notify();
+        await Task.Delay(16);
+        var html = await Reports.BuildAsync(Ws, Io);
+        if (html is null) return;
+        await Io.DownloadAsync($"{BaseName}_レポート.html", "text/html", System.Text.Encoding.UTF8.GetBytes(html));
+        Ws.Status = "解析レポートを書き出しました。ブラウザーで開いて、印刷から PDF にもできます。";
+        Ws.Notify();
+    }
+
+    public void Dispose()
+    {
+        Ws.Changed -= OnChanged;
+        _self?.Dispose();
+    }
+}

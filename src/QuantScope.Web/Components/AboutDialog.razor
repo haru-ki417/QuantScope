@@ -1,0 +1,25 @@
+<Modal Title="QuantScope について" OnClose="OnClose">
+    <p>顕微鏡の画像や医用画像を、手順（レシピ）を積み重ねて解析し、粒の数・面積・形・明るさを測るアプリです。研究・学習用のソフトウェアで、医療機器ではなく、診断には使えません。</p>
+    <ul class="about-list">
+        <li><b>画像は送りません。</b>読み込み・計算・書き出しはすべてこのブラウザーの中で行います。</li>
+        <li><b>スマホ・タブレットでも使えます。</b>2 本の指で拡大・移動、タップで粒を選べます。ホーム画面に追加すると、アプリのように開けます。</li>
+        <li><b>Windows 版</b>では、さらにフォルダーの画像をまとめて処理したり、AI に画像を説明してもらったりできます。</li>
+    </ul>
+    <h3>キー操作（パソコン）</h3>
+    <dl class="keys">
+        <div><dt>V R E P L X</dt><dd>移動・四角・楕円・多角形・線・粒を除く</dd></div>
+        <div><dt>C</dt><dd>元の画像と比べる</dd></div>
+        <div><dt>F / 1</dt><dd>全体を表示 / 等倍</dd></div>
+        <div><dt>Ctrl+Z / Ctrl+Y</dt><dd>元に戻す / やり直す</dd></div>
+        <div><dt>Ctrl+O / Ctrl+S</dt><dd>開く / 計測結果を保存</dd></div>
+    </dl>
+    <div class="row-buttons">
+        <a class="btn" href="https://github.com/haru-ki417/QuantScope" target="_blank" rel="noopener"><Icon Name="github" /> ソースコード</a>
+        <a class="btn" href="https://github.com/haru-ki417/QuantScope/releases/latest" target="_blank" rel="noopener"><Icon Name="windows" /> Windows 版</a>
+    </div>
+    <p class="muted small">版 @Reports.AppVersion　© 2026 Haruki Takahashi　MIT License</p>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+}
