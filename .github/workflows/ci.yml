@@ -9,9 +9,26 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
-    # 画面（WPF）も含めて、実際に使う Windows で確かめる
+  windows:
+    # 画面（WPF）と計算の部品を、実際に使う Windows で確かめる
     runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build src/QuantScope.App --configuration Release
+
+      - name: Test
+        run: dotnet test --project tests/QuantScope.Tests --configuration Release
+
+  web:
+    # ブラウザー版（Blazor WebAssembly）がビルドできるかを確かめる
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v5
@@ -23,11 +40,5 @@ jobs:
       - name: Install WebAssembly tools
         run: dotnet workload install wasm-tools
 
-      - name: Restore
-        run: dotnet restore QuantScope.slnx
-
       - name: Build
-        run: dotnet build QuantScope.slnx --configuration Release --no-restore
-
-      - name: Test
-        run: dotnet test --solution QuantScope.slnx --configuration Release --no-build
+        run: dotnet build src/QuantScope.Web --configuration Release

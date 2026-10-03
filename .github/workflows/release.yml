@@ -21,7 +21,7 @@ jobs:
           global-json-file: global.json
 
       - name: Test
-        run: dotnet test --solution QuantScope.slnx --configuration Release
+        run: dotnet test --project tests/QuantScope.Tests --configuration Release
 
       - name: Publish (self-contained, win-x64)
         shell: pwsh
