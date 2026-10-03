@@ -26,6 +26,8 @@ public sealed class ImageView : FrameworkElement
     public static readonly DependencyProperty MatchesProperty = Dp(nameof(Matches), typeof(IReadOnlyList<TemplateMatch>), null);
     public static readonly DependencyProperty ToolProperty = Dp(nameof(Tool), typeof(Tool), Tool.Pan, OnToolChanged);
     public static readonly DependencyProperty CalibrationProperty = Dp(nameof(Calibration), typeof(Calibration), Calibration.Pixels);
+    public static readonly DependencyProperty CompareSourceProperty = Dp(nameof(CompareSource), typeof(ImageSource), null);
+    public static readonly DependencyProperty ComparingProperty = Dp(nameof(Comparing), typeof(bool), false);
 
     private static readonly Typeface Face = new("Bahnschrift");
     private static readonly Brush Accent = Frozen(Color.FromRgb(0x45, 0xD1, 0x9A));
@@ -46,6 +48,8 @@ public sealed class ImageView : FrameworkElement
     private readonly List<PointD> _polygon = [];
     private PointD? _hover;
     private bool _moved;
+    private double _split = 0.5;
+    private bool _draggingSplit;
 
     public ImageView()
     {
@@ -60,6 +64,9 @@ public sealed class ImageView : FrameworkElement
     /// <summary>道具が「移動」のときに、ドラッグせずにクリックした所（粒を選ぶ）</summary>
     public event EventHandler<PointD>? Clicked;
 
+    /// <summary>道具が「粒を除く」のときに、クリックした所</summary>
+    public event EventHandler<PointD>? ExcludeClicked;
+
     public ImageSource? Source { get => (ImageSource?)GetValue(SourceProperty); set => SetValue(SourceProperty, value); }
     public ImageSource? Overlay { get => (ImageSource?)GetValue(OverlayProperty); set => SetValue(OverlayProperty, value); }
     public bool ShowOverlay { get => (bool)GetValue(ShowOverlayProperty); set => SetValue(ShowOverlayProperty, value); }
@@ -72,6 +79,23 @@ public sealed class ImageView : FrameworkElement
     public IReadOnlyList<TemplateMatch>? Matches { get => (IReadOnlyList<TemplateMatch>?)GetValue(MatchesProperty); set => SetValue(MatchesProperty, value); }
     public Tool Tool { get => (Tool)GetValue(ToolProperty); set => SetValue(ToolProperty, value); }
     public Calibration Calibration { get => (Calibration)GetValue(CalibrationProperty); set => SetValue(CalibrationProperty, value); }
+
+    /// <summary>比べる画像（左側に出す。ふつうは元の画像）</summary>
+    public ImageSource? CompareSource { get => (ImageSource?)GetValue(CompareSourceProperty); set => SetValue(CompareSourceProperty, value); }
+    public bool Comparing { get => (bool)GetValue(ComparingProperty); set => SetValue(ComparingProperty, value); }
+
+    private bool CompareActive => Comparing && CompareSource is { } c && Source is { } s && PixelWidth(c) == PixelWidth(s) && PixelHeight(c) == PixelHeight(s);
+
+    /// <summary>粒が画面の中央に来るように動かす（小さく見えているときは拡大する）</summary>
+    public void CenterOn(Particle p)
+    {
+        ArgumentNullException.ThrowIfNull(p);
+        if (Source is null || ActualWidth < 1) return;
+        double size = Math.Max(p.BoundsWidth, p.BoundsHeight);
+        if (size * _scale < 40) _scale = Math.Clamp(80 / Math.Max(size, 1), _scale, 16);
+        _offset = new Vector((ActualWidth / 2) - (p.CentroidX * _scale), (ActualHeight / 2) - (p.CentroidY * _scale));
+        InvalidateVisual();
+    }
 
     /// <summary>今の倍率（100% = 1 画素が 1 画面の点）</summary>
     public double Zoom => _scale;
@@ -102,9 +126,16 @@ public sealed class ImageView : FrameworkElement
         var v = (ImageView)d;
         v._polygon.Clear();
         v._dragStart = v._dragNow = null;
-        v.Cursor = (Tool)e.NewValue == Tool.Pan ? Cursors.Arrow : Cursors.Cross;
+        v.Cursor = ToolCursor((Tool)e.NewValue);
         v.InvalidateVisual();
     }
+
+    private static Cursor ToolCursor(Tool t) => t switch
+    {
+        Tool.Pan => Cursors.Arrow,
+        Tool.Exclude => Cursors.Hand,
+        _ => Cursors.Cross,
+    };
 
     private Size ImageSize => Source is { } s ? new Size(PixelWidth(s), PixelHeight(s)) : Size.Empty;
 
@@ -164,14 +195,26 @@ public sealed class ImageView : FrameworkElement
         using (var g = group.Open())
         {
             g.DrawImage(Source, rect);
+            bool compare = CompareActive;
+            double splitX = rect.X + (rect.Width * _split);
             if (ShowOverlay && Overlay is not null)
             {
+                // 比べているときは、右側（今の表示）にだけ重ねる
+                if (compare) g.PushClip(new RectangleGeometry(new Rect(splitX, rect.Y, Math.Max(0, rect.Right - splitX), rect.Height)));
                 g.PushOpacity(OverlayOpacity);
                 g.DrawImage(Overlay, rect);
+                g.Pop();
+                if (compare) g.Pop();
+            }
+            if (compare)
+            {
+                g.PushClip(new RectangleGeometry(new Rect(rect.X, rect.Y, Math.Max(0, splitX - rect.X), rect.Height)));
+                g.DrawImage(CompareSource, rect);
                 g.Pop();
             }
         }
         dc.DrawDrawing(group);
+        if (CompareActive) DrawSplit(dc, rect, VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         DrawNumbers(dc, dpi);
@@ -180,6 +223,41 @@ public sealed class ImageView : FrameworkElement
         DrawRoi(dc);
         DrawLine(dc, dpi);
         DrawScaleBar(dc, dpi);
+    }
+
+    private double SplitScreenX
+    {
+        get
+        {
+            var size = ImageSize;
+            return _offset.X + (size.Width * _scale * _split);
+        }
+    }
+
+    /// <summary>比べる境目の線と取っ手、左右の名前</summary>
+    private void DrawSplit(DrawingContext dc, Rect rect, double dpi)
+    {
+        double x = Math.Clamp(SplitScreenX, 0, ActualWidth);
+        double top = Math.Max(0, rect.Y), bottom = Math.Min(ActualHeight, rect.Bottom);
+        dc.DrawLine(new Pen(new SolidColorBrush(Color.FromArgb(0x90, 0, 0, 0)), 4), new Point(x, top), new Point(x, bottom));
+        dc.DrawLine(new Pen(Brushes.White, 1.5), new Point(x, top), new Point(x, bottom));
+        double cy = (top + bottom) / 2;
+        dc.DrawEllipse(Brushes.White, new Pen(LabelBack, 1), new Point(x, cy), 13, 13);
+        var arrows = new FormattedText("\uE76B \uE76C", CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface("Segoe Fluent Icons, Segoe MDL2 Assets"), 9, LabelBack, dpi);
+        dc.DrawText(arrows, new Point(x - (arrows.Width / 2), cy - (arrows.Height / 2)));
+        var left = new FormattedText("元の画像", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("BIZ UDPGothic"), 11.5, Label, dpi);
+        var right = new FormattedText("今の表示", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("BIZ UDPGothic"), 11.5, Label, dpi);
+        double ly = Math.Max(top + 10, 52);
+        if (x - left.Width - 18 > 0)
+        {
+            dc.DrawRoundedRectangle(LabelBack, null, new Rect(x - left.Width - 18, ly, left.Width + 10, left.Height + 6), 3, 3);
+            dc.DrawText(left, new Point(x - left.Width - 13, ly + 3));
+        }
+        if (x + right.Width + 18 < ActualWidth)
+        {
+            dc.DrawRoundedRectangle(LabelBack, null, new Rect(x + 8, ly, right.Width + 10, right.Height + 6), 3, 3);
+            dc.DrawText(right, new Point(x + 13, ly + 3));
+        }
     }
 
     private void DrawNumbers(DrawingContext dc, double dpi)
@@ -334,7 +412,14 @@ public sealed class ImageView : FrameworkElement
             e.Handled = true;
             return;
         }
-        if (e.ChangedButton is MouseButton.Right or MouseButton.Middle || (e.ChangedButton == MouseButton.Left && Tool == Tool.Pan))
+        if (e.ChangedButton == MouseButton.Left && CompareActive && Math.Abs(pos.X - SplitScreenX) < 10)
+        {
+            _draggingSplit = true;
+            CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+        if (e.ChangedButton is MouseButton.Right or MouseButton.Middle || (e.ChangedButton == MouseButton.Left && Tool is Tool.Pan or Tool.Exclude))
         {
             _panStart = pos;
             _panOrigin = _offset;
@@ -366,6 +451,15 @@ public sealed class ImageView : FrameworkElement
     {
         ArgumentNullException.ThrowIfNull(e);
         var pos = e.GetPosition(this);
+        if (_draggingSplit)
+        {
+            var size = ImageSize;
+            if (!size.IsEmpty) _split = Math.Clamp((pos.X - _offset.X) / (size.Width * _scale), 0, 1);
+            InvalidateVisual();
+            return;
+        }
+        if (_panStart is null && _dragStart is null && CompareActive)
+            Cursor = Math.Abs(pos.X - SplitScreenX) < 10 ? Cursors.SizeWE : ToolCursor(Tool);
         if (_panStart is { } ps)
         {
             var d = pos - ps;
@@ -394,13 +488,24 @@ public sealed class ImageView : FrameworkElement
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
+        if (_draggingSplit)
+        {
+            _draggingSplit = false;
+            ReleaseMouseCapture();
+            return;
+        }
         if (_panStart is not null)
         {
-            bool click = !_moved && e.ChangedButton == MouseButton.Left && Tool == Tool.Pan;
+            bool click = !_moved && e.ChangedButton == MouseButton.Left && Tool is Tool.Pan or Tool.Exclude;
             _panStart = null;
             ReleaseMouseCapture();
-            Cursor = Tool == Tool.Pan ? Cursors.Arrow : Cursors.Cross;
-            if (click) Clicked?.Invoke(this, ToImage(e.GetPosition(this)));
+            Cursor = ToolCursor(Tool);
+            if (click)
+            {
+                var ip = ToImage(e.GetPosition(this));
+                if (Tool == Tool.Exclude) ExcludeClicked?.Invoke(this, ip);
+                else Clicked?.Invoke(this, ip);
+            }
             return;
         }
         if (_dragStart is { } s && _dragNow is { } n)

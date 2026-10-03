@@ -66,12 +66,65 @@ public static class SnapshotRunner
             vm.RightTab = RightTab.Profile;
             await Settle(vm);
             Save(window, dir, "06-shapes-line.png", log);
+            vm.Line = null;
+            vm.SelectedParticle = null;
+
+            // 免疫染色: DAB の量で陽性・陰性に分ける（左は計測の条件）
+            vm.OpenSampleCommand.Execute("ihc");
+            await Settle(vm);
+            vm.RightTab = RightTab.Results;
+            await Settle(vm);
+            Save(window, dir, "07-ihc-positive.png", log);
+            log.Add($"ihc: {vm.SummaryCount} / {vm.Kpi4Label} {vm.Kpi4Value} {vm.Kpi4Sub}");
+
+            // 粒の値の分布（DAB の量、陽性のしきい値）
+            vm.RightTab = RightTab.Histogram;
+            vm.DistributionMode = DistributionMode.Particles;
+            vm.SelectedFeature = vm.FeatureItems.First(f => f.Feature == QuantScope.Core.Analysis.ParticleFeatures.MeanIntensity);
+            await Settle(vm);
+            Save(window, dir, "08-particle-distribution.png", log);
+            vm.DistributionMode = DistributionMode.Pixels;
+
+            // 染色を分ける手順を足して、元の画像と比べる
+            vm.SelectedStep = vm.Steps[0];
+            vm.AddStepCommand.Execute("stain");
+            vm.IsComparing = true;
+            vm.RightTab = RightTab.Explain;
+            await Settle(vm);
+            Save(window, dir, "09-stain-compare.png", log);
+            log.Add("stain step: " + vm.Steps[1].Info + " / " + vm.Steps[1].Warning);
+            vm.IsComparing = false;
+
+            // レポート
+            vm.RemoveStepCommand.Execute(vm.Steps[1]);
+            vm.ShowFinalCommand.Execute(null);
+            await Settle(vm);
+            string? html = await vm.BuildReportHtmlAsync();
+            if (html is not null)
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "report.html"), html);
+                log.Add($"report: {html.Length} chars");
+            }
+
+            // 蛍光の核: 粒を手で除き、粒の値を見る
+            vm.OpenSampleCommand.Execute("nuclei");
+            await Settle(vm);
+            foreach (var p in vm.Particles.Take(2).ToList()) vm.ToggleExcludeAt(new PointD(p.CentroidX, p.CentroidY));
+            await Settle(vm);
+            vm.Tool = Tool.Exclude;
+            vm.SelectedParticle = vm.Particles.FirstOrDefault(p => p.Id == 5);
+            vm.RightTab = RightTab.Results;
+            await Settle(vm);
+            Save(window, dir, "10-exclude-detail.png", log);
+            log.Add($"exclude: {vm.SummaryCount} / {vm.ExcludedText}");
+            vm.RestoreExcludedCommand.Execute(null);
+            vm.Tool = Tool.Pan;
+            vm.SelectedParticle = null;
 
             // AI の画面（キーなし）
             vm.RightTab = RightTab.Ai;
-            vm.Line = null;
             await Settle(vm);
-            Save(window, dir, "07-ai.png", log);
+            Save(window, dir, "11-ai.png", log);
 
             // 画像ファイルの読み書きと一括処理（Windows の画像の部品を使うところの確認）
             await CheckFilesAndBatch(window, vm, dir, log);
@@ -80,7 +133,7 @@ public static class SnapshotRunner
             var settings = new SettingsWindow(new UserSettings()) { Owner = window, WindowStartupLocation = WindowStartupLocation.CenterOwner };
             settings.Show();
             await Idle(600);
-            Save(settings, dir, "10-settings.png", log);
+            Save(settings, dir, "check-settings.png", log);
             settings.Close();
             log.Add("ok");
         }
@@ -106,7 +159,7 @@ public static class SnapshotRunner
         string folder = Path.Combine(Path.GetTempPath(), "quantscope-snapshot-batch");
         if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         Directory.CreateDirectory(folder);
-        foreach (var id in new[] { "tissue", "shapes" })
+        foreach (var id in new[] { "tissue", "shapes", "ihc" })
         {
             var s = SampleImages.Create(id);
             ImageIo.SavePng(Path.Combine(folder, id + ".png"), s.Image.Width, s.Image.Height, DisplayRenderer.ToBgra(s.Image, ColorMap.Gray));
@@ -120,14 +173,14 @@ public static class SnapshotRunner
         await vm.OpenPathAsync(Path.Combine(folder, "tissue.png"));
         await Settle(vm);
         log.Add($"reopen png: {vm.ImageDescription} count {before} -> {vm.SummaryCount}");
-        Save(window, dir, "08-reopened-png.png", log);
+        Save(window, dir, "check-reopened-png.png", log);
 
         var batch = new BatchViewModel(vm.Recipe.Clone(), vm.Calibration, folder, new WpfDialogs(), vm.Settings);
         var bw = new BatchWindow(batch) { Owner = window, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         bw.Show();
         await batch.RunCommand.ExecuteAsync(null);
         await Idle(600);
-        Save(bw, dir, "09-batch.png", log);
+        Save(bw, dir, "check-batch.png", log);
         bw.Close();
         foreach (var r in batch.Rows) log.Add($"batch: {r.File} count={r.Count} fraction={r.Fraction} note={r.Note}");
         var outputs = Directory.Exists(batch.OutputFolder!) ? Directory.GetFiles(batch.OutputFolder!).Select(Path.GetFileName) : [];

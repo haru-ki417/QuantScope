@@ -20,6 +20,7 @@ public enum Tool
     Ellipse,
     Polygon,
     Line,
+    Exclude,
 }
 
 public enum RightTab
@@ -63,6 +64,9 @@ public sealed partial class MainViewModel : ObservableObject
             .Select(g => new StepGroup(StepCatalog.CategoryTitle(g.Key), g.ToList()))
             .ToList();
         _undo.Reset(Recipe.ToJson());
+        RefreshRecent();
+        RefreshFeatureItems();
+        UpdateMeasureSummary();
     }
 
     public UserSettings Settings { get; private set; }
@@ -112,7 +116,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>表示している状態（-1 = 元の画像、0.. = その手順のあと）</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ViewTitle), nameof(IsViewingFinal), nameof(IsViewingInput))]
+    [NotifyPropertyChangedFor(nameof(ViewTitle), nameof(IsViewingFinal), nameof(IsViewingInput), nameof(IsInputRowSelected))]
     private int _viewIndex = -1;
 
     public bool IsViewingFinal => ViewIndex == Steps.Count - 1;
@@ -120,6 +124,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>「結果」（元の画像に重ねた表示）を見ているか</summary>
     public bool IsShowingResult => IsViewingFinal && SelectedStep is null;
     public bool IsViewingInput => ViewIndex < 0;
+
+    /// <summary>左の列の「元の画像」の行を強調する（手順がないときは、元の画像 = 結果なので「計測」のほうを強調）</summary>
+    public bool IsInputRowSelected => ViewIndex < 0 && Steps.Count > 0;
 
     public string ViewTitle => ViewIndex < 0 || Steps.Count == 0
         ? "元の画像"
@@ -144,9 +151,9 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnExcludeEdgesChanged(bool value) => MeasureChanged();
     partial void OnIntensityFromOriginalChanged(bool value) => MeasureChanged();
 
-    private void MeasureChanged()
+    private void MeasureChanged(string? coalesce = null)
     {
-        if (_suppressRun) return; // レシピを丸ごと入れかえている途中
+        if (_suppressRun || _suppressMeasure) return; // レシピを丸ごと入れかえている途中
         Recipe.Measure = new MeasureSettings
         {
             MinArea = Math.Max(0, MinArea),
@@ -154,12 +161,17 @@ public sealed partial class MainViewModel : ObservableObject
             ExcludeEdges = ExcludeEdges,
             IntensityFromOriginal = IntensityFromOriginal,
             EightConnected = true,
+            Channel = (IntensityChannel)Math.Clamp(ChannelIndex, 0, IntensityChannels.Titles.Count - 1),
+            Classify = Classify,
+            PositiveThreshold = PositiveThreshold,
+            PositiveAbove = PositiveAbove,
         };
-        RecipeEdited();
+        UpdateMeasureSummary();
+        RecipeEdited(coalesce);
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasAnalysis))]
+    [NotifyPropertyChangedFor(nameof(HasAnalysis), nameof(ShowClassLegend))]
     private AnalysisResult? _analysis;
 
     public bool HasAnalysis => Analysis is not null;
@@ -170,7 +182,11 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private Particle? _selectedParticle;
 
-    partial void OnSelectedParticleChanged(Particle? value) => RenderOverlay();
+    partial void OnSelectedParticleChanged(Particle? value)
+    {
+        RenderOverlay();
+        UpdateSelectedDetails();
+    }
 
     [ObservableProperty]
     private string _summaryCount = "–";
@@ -209,18 +225,22 @@ public sealed partial class MainViewModel : ObservableObject
     private ColorMap _colorMap = ColorMap.Gray;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowClassLegend))]
     private bool _showOverlay = true;
 
     [ObservableProperty]
     private bool _showNumbers = true;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowClassLegend))]
     private bool _colorPerObject;
 
     [ObservableProperty]
     private double _overlayOpacity = 0.75;
 
     partial void OnColorMapChanged(ColorMap value) => RenderView();
+
+    partial void OnInputChanged(Raster? value) => OnPropertyChanged(nameof(ChannelNeedsColor));
     partial void OnColorPerObjectChanged(bool value) => RenderOverlay();
 
     [ObservableProperty]
@@ -377,6 +397,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (value is not null) ViewIndex = Steps.IndexOf(value);
         OnPropertyChanged(nameof(ViewTitle));
         OnPropertyChanged(nameof(IsShowingResult));
+        OnPropertyChanged(nameof(ShowClassLegend));
         UpdateHistogramMarker();
         RenderView();
     }
@@ -385,6 +406,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ViewTitle));
         OnPropertyChanged(nameof(IsShowingResult));
+        OnPropertyChanged(nameof(ShowClassLegend));
         RenderView();
     }
 
@@ -430,6 +452,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ViewTitle));
         OnPropertyChanged(nameof(IsViewingFinal));
         OnPropertyChanged(nameof(IsShowingResult));
+        OnPropertyChanged(nameof(IsInputRowSelected));
     }
 
     /// <summary>レシピが変わった: 元に戻す用に覚え、計算し直す</summary>
@@ -478,6 +501,10 @@ public sealed partial class MainViewModel : ObservableObject
             MaxArea = recipe.Measure.MaxArea;
             ExcludeEdges = recipe.Measure.ExcludeEdges;
             IntensityFromOriginal = recipe.Measure.IntensityFromOriginal;
+            ChannelIndex = (int)recipe.Measure.Channel;
+            Classify = recipe.Measure.Classify;
+            PositiveThreshold = recipe.Measure.PositiveThreshold;
+            PositiveAbove = recipe.Measure.PositiveAbove;
             SelectedStep = selected >= 0 && selected < Steps.Count && !remember ? Steps[selected] : null;
             ViewIndex = SelectedStep is null ? Steps.Count - 1 : Steps.IndexOf(SelectedStep);
             OnPropertyChanged(nameof(Calibration));
@@ -487,6 +514,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _suppressRun = false;
         }
+        UpdateMeasureSummary();
         if (remember)
         {
             _undo.Push(Recipe.ToJson(), null);
@@ -523,6 +551,7 @@ public sealed partial class MainViewModel : ObservableObject
         var steps = Recipe.Steps.Select(s => s.Clone()).ToList();
         var measure = Recipe.Measure;
         var roi = Roi;
+        var exclude = _excluded.ToList();
         var previous = _run;
         IsBusy = true;
         try
@@ -532,7 +561,7 @@ public sealed partial class MainViewModel : ObservableObject
                 var r = PipelineRunner.Run(input, cal, steps, previous, cts.Token);
                 var final = r.Final;
                 var region = roi is not null && RoiFits(roi, final.Image) ? roi : null;
-                var a = PipelineRunner.Analyze(final, measure, region);
+                var a = PipelineRunner.Analyze(final, measure, region, exclude);
                 return (r, a);
             }, cts.Token);
             if (version != _runVersion) return;
@@ -574,9 +603,15 @@ public sealed partial class MainViewModel : ObservableObject
         int keep = SelectedParticle?.Id ?? 0;
         Particles = a?.Particles ?? [];
         SelectedParticle = Particles.FirstOrDefault(p => p.Id == keep);
+        RefreshFeatureItems();
+        UpdateDistribution();
+        UpdateSelectedDetails();
+        IntensityHeader = a is null ? "平均の明るさ" : $"平均（{a.Summary.IntensityLabel}）";
         if (a is null)
         {
-            SummaryCount = SummaryMeanArea = SummaryFraction = SummaryCircularity = "–";
+            SummaryCount = SummaryMeanArea = SummaryFraction = SummaryCircularity = Kpi4Value = "–";
+            Kpi4Label = Classify ? "陽性率" : "平均の円形度";
+            Kpi4Sub = "";
             SummaryDetail = "";
             AnalysisHint = Steps.Count == 0 ? "左の「手順を足す」から処理を選んでください。" : "手順に「二値化」などを入れて対象を選ぶと、数えて測れます。";
             return;
@@ -587,9 +622,22 @@ public sealed partial class MainViewModel : ObservableObject
         SummaryMeanArea = Fmt(s.MeanArea) + " " + s.AreaUnit;
         SummaryFraction = s.AreaFraction.ToString("0.00", c) + " %";
         SummaryCircularity = s.MeanCircularity.ToString("0.000", c);
+        if (s.Positive is not null)
+        {
+            Kpi4Label = "陽性率";
+            Kpi4Value = s.PositivePercent.ToString("0.0", c) + " %";
+            Kpi4Sub = $"{s.PositiveCount:N0} / {s.Count:N0}";
+        }
+        else
+        {
+            Kpi4Label = "平均の円形度";
+            Kpi4Value = SummaryCircularity;
+            Kpi4Sub = "";
+        }
         SummaryDetail = string.Create(c,
             $"面積の合計 {Fmt(s.TotalArea)} {s.AreaUnit}　中央値 {Fmt(s.MedianArea)}　標準偏差 {Fmt(s.StdArea)}\n調べた範囲 {Fmt(s.AnalyzedArea)} {s.AreaUnit}　密度 {s.Density:G3} 個/{s.AreaUnit}")
-            + (HasRoi ? "（範囲の中だけ）" : "");
+            + (HasRoi ? "（範囲の中だけ）" : "")
+            + (s.ExcludedCount > 0 ? $"\n手で除いた粒 {s.ExcludedCount} 個（数に入れていません）" : "");
         AnalysisHint = s.Count == 0 ? "対象が見つかりませんでした。しきい値や、計測の条件（面積の下限）を見直してください。" : "";
     }
 
@@ -637,6 +685,7 @@ public sealed partial class MainViewModel : ObservableObject
         RenderOverlay();
         UpdateHistogram(img);
         UpdateProfile();
+        RenderCompare();
     }
 
     /// <summary>
@@ -668,16 +717,25 @@ public sealed partial class MainViewModel : ObservableObject
         var analysis = Analysis;
         var mask = state.Mask;
         int selected = SelectedParticle?.Id ?? 0;
-        var coloring = ColorPerObject ? OverlayColoring.PerObject : OverlayColoring.Uniform;
         bool useLabels = final && analysis is not null && analysis.Labels.Width == mask.Width && analysis.Labels.Height == mask.Height;
+        bool perObject = ColorPerObject;
         DisplayParticles = useLabels ? analysis!.Particles : null;
         DisplayLabels = useLabels ? analysis!.Labels : null;
-        _ = Task.Run(() => useLabels ? DisplayRenderer.LabelOverlay(analysis!.Labels, coloring, selected) : DisplayRenderer.MaskOverlay(mask))
+        _ = Task.Run(() => useLabels ? ResultOverlay(analysis!, perObject, selected) : DisplayRenderer.MaskOverlay(mask))
             .ContinueWith(t =>
             {
                 if (version != _overlayVersion || t.IsFaulted) return;
                 OverlayImage = ImageIo.ToBitmap(mask.Width, mask.Height, t.Result);
             }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>計測した粒の重ね合わせ（色分け・陽性と陰性・手で除いた粒）</summary>
+    internal static byte[] ResultOverlay(AnalysisResult a, bool perObject, int selected = 0)
+    {
+        var coloring = perObject ? OverlayColoring.PerObject : a.Summary.Positive is not null ? OverlayColoring.Classified : OverlayColoring.Uniform;
+        var bytes = DisplayRenderer.LabelOverlay(a.Labels, coloring, selected, coloring == OverlayColoring.Classified ? DisplayRenderer.PositiveById(a.Particles) : null);
+        if (a.Excluded is { } ex) DisplayRenderer.AddExcluded(bytes, ex);
+        return bytes;
     }
 
     // ---------------------------------------------------------------- ヒストグラム

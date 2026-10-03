@@ -22,7 +22,10 @@ public partial class MainWindow : Window
         PreviewKeyDown += OnPreviewKey;
         Viewer.HoverChanged += (_, p) => _vm?.UpdateHover(p);
         Viewer.Clicked += (_, p) => _vm?.SelectParticleAt(p);
+        Viewer.ExcludeClicked += (_, p) => _vm?.ToggleExcludeAt(p);
         Histo.MarkerDragged += (_, v) => _vm?.SetThresholdFromHistogram(v);
+        PositiveChart.MarkerDragged += (_, v) => _vm?.SetPositiveFromChart(v);
+        FeatureChart.MarkerDragged += (_, v) => _vm?.SetPositiveFromChart(v);
     }
 
     private void Attach(MainViewModel? vm)
@@ -31,13 +34,26 @@ public partial class MainWindow : Window
         {
             _vm.SettingsRequested -= OnSettingsRequested;
             _vm.BatchRequested -= OnBatchRequested;
+            _vm.PropertyChanged -= OnVmPropertyChanged;
         }
         _vm = vm;
         if (_vm is not null)
         {
             _vm.SettingsRequested += OnSettingsRequested;
             _vm.BatchRequested += OnBatchRequested;
+            _vm.PropertyChanged += OnVmPropertyChanged;
         }
+    }
+
+    /// <summary>表の見出しに単位と「何を測ったか」を入れ、判定の列は陽性を分けるときだけ出す</summary>
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_vm is null || e.PropertyName != nameof(MainViewModel.Analysis)) return;
+        var s = _vm.Analysis?.Summary;
+        AreaColumn.Header = s is null ? "面積" : $"面積 {s.AreaUnit}";
+        FeretColumn.Header = s is null ? "フェレ径" : $"フェレ径 {s.LengthUnit}";
+        IntensityColumn.Header = s is null ? "明るさ" : s.IntensityLabel;
+        PositiveColumn.Visibility = s?.Positive is not null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>
@@ -133,6 +149,12 @@ public partial class MainWindow : Window
             case Key.L:
                 _vm.Tool = Tool.Line;
                 break;
+            case Key.X:
+                _vm.Tool = Tool.Exclude;
+                break;
+            case Key.C:
+                _vm.IsComparing = !_vm.IsComparing;
+                break;
         }
     }
 
@@ -171,6 +193,11 @@ public partial class MainWindow : Window
         if (_vm is not null && !JustClosed) _vm.IsSaveMenuOpen = !_vm.IsSaveMenuOpen;
     }
 
+    private void OnToggleOpenMenu(object sender, RoutedEventArgs e)
+    {
+        if (_vm is not null && !JustClosed) _vm.IsOpenMenuOpen = !_vm.IsOpenMenuOpen;
+    }
+
     private void OnToggleAddMenu(object sender, RoutedEventArgs e)
     {
         if (_vm is not null && !JustClosed) _vm.IsAddMenuOpen = !_vm.IsAddMenuOpen;
@@ -192,7 +219,29 @@ public partial class MainWindow : Window
 
     private void OnParticleSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ParticleGrid.SelectedItem is not null) ParticleGrid.ScrollIntoView(ParticleGrid.SelectedItem);
+        if (ParticleGrid.SelectedItem is not QuantScope.Core.Analysis.Particle p) return;
+        ParticleGrid.ScrollIntoView(p);
+        // 表で選んだとき（画像の上で選んだときではなく）は、その粒を画像の中央に出す
+        if (ParticleGrid.IsKeyboardFocusWithin) Viewer.CenterOn(p);
+    }
+
+    private void OnParticleGridKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Delete && _vm?.SelectedParticle is not null)
+        {
+            _vm.ExcludeSelectedCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void OnCenterSelected(object sender, RoutedEventArgs e)
+    {
+        if (_vm?.SelectedParticle is { } p) Viewer.CenterOn(p);
+    }
+
+    private void OnClearSelection(object sender, RoutedEventArgs e)
+    {
+        if (_vm is not null) _vm.SelectedParticle = null;
     }
 
     /// <summary>画面（要素）を PNG に保存する（見本の撮影用）</summary>

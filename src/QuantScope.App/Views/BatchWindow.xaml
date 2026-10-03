@@ -65,6 +65,7 @@
                 <DataGridTextColumn Header="数" Binding="{Binding Count}" Width="70" />
                 <DataGridTextColumn Header="占有率" Binding="{Binding Fraction}" Width="80" />
                 <DataGridTextColumn Header="平均の面積" Binding="{Binding MeanArea}" Width="90" />
+                <DataGridTextColumn Header="陽性率" Binding="{Binding Positive}" Width="80" />
                 <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="2*" CellStyle="{StaticResource TextCell}">
                     <DataGridTextColumn.ElementStyle>
                         <Style TargetType="TextBlock">

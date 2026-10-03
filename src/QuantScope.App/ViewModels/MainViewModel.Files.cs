@@ -49,7 +49,9 @@ public sealed partial class MainViewModel
             var img = await Task.Run(() => ImageIo.Load(path));
             SetImage(img, Path.GetFileName(path));
             Settings.LastFolder = Path.GetDirectoryName(path);
+            Settings.AddRecent(Path.GetFullPath(path));
             SaveSettings();
+            RefreshRecent();
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -74,6 +76,8 @@ public sealed partial class MainViewModel
         Matches = [];
         SelectedParticle = null;
         Analysis = null;
+        ClearExcluded();
+        UpdateMeasureSummary();
         Input = image.Raster;
         FileName = name;
         ImageDescription = image.Description;
@@ -143,7 +147,7 @@ public sealed partial class MainViewModel
     {
         var baseBytes = DisplayRenderer.ToBgra(state.Original.Width == state.Image.Width ? state.Original : state.Image, map);
         var over = analysis is not null && analysis.Labels.Width == state.Mask!.Width
-            ? DisplayRenderer.LabelOverlay(analysis.Labels, perObject ? OverlayColoring.PerObject : OverlayColoring.Uniform)
+            ? ResultOverlay(analysis, perObject)
             : DisplayRenderer.MaskOverlay(state.Mask!);
         return DisplayRenderer.Compose(baseBytes, over, opacity);
     }
@@ -167,7 +171,7 @@ public sealed partial class MainViewModel
         string? path = _dialogs.SaveFile("計測結果を保存", "CSV (*.csv)|*.csv", $"{BaseName}_計測.csv", Settings.LastFolder);
         if (path is null) return;
         var s = Analysis.Summary;
-        string csv = CsvExport.Particles(Analysis.Particles.Select(p => ((string?)null, p)), s.LengthUnit, s.AreaUnit);
+        string csv = CsvExport.Particles(Analysis.Particles.Select(p => ((string?)null, p)), s.LengthUnit, s.AreaUnit, s.IntensityLabel);
         Try(() => File.WriteAllText(path, csv, CsvExport.Encoding), path);
     }
 
@@ -412,6 +416,7 @@ public sealed partial class MainViewModel
     {
         Settings = _settingsStore.Load();
         OnPropertyChanged(nameof(HasApiKey));
+        RefreshRecent();
     }
 
     public event EventHandler? SettingsRequested;

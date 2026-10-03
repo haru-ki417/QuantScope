@@ -186,3 +186,130 @@ public sealed class ProfileChart : FrameworkElement
         }
     }
 }
+
+/// <summary>
+/// 粒の値の度数分布（棒グラフ）。Marker があれば縦の線を出し、ドラッグで動かせる（陽性のしきい値）。
+/// Split が true なら、線より上を陽性の色、下を陰性の色にする。
+/// </summary>
+public sealed class BinChart : FrameworkElement
+{
+    public static readonly DependencyProperty BinsProperty = DependencyProperty.Register(
+        nameof(Bins), typeof(IReadOnlyList<Bin>), typeof(BinChart), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty MarkerProperty = DependencyProperty.Register(
+        nameof(Marker), typeof(double?), typeof(BinChart), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty SplitProperty = DependencyProperty.Register(
+        nameof(Split), typeof(bool), typeof(BinChart), new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty AboveProperty = DependencyProperty.Register(
+        nameof(Above), typeof(bool), typeof(BinChart), new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    private static readonly Brush Positive = ChartColors.Frozen(Color.FromArgb(0xC0, 0xFF, 0x5F, 0xAA));
+    private static readonly Brush Negative = ChartColors.Frozen(Color.FromArgb(0xC0, 0x4C, 0xC9, 0xF0));
+    private static readonly Brush Bar = ChartColors.Frozen(Color.FromRgb(0x5A, 0x6E, 0x78));
+    private const double Bottom = 18, Left = 30;
+
+    public event EventHandler<double>? MarkerDragged;
+
+    public IReadOnlyList<Bin>? Bins { get => (IReadOnlyList<Bin>?)GetValue(BinsProperty); set => SetValue(BinsProperty, value); }
+    public double? Marker { get => (double?)GetValue(MarkerProperty); set => SetValue(MarkerProperty, value); }
+    public bool Split { get => (bool)GetValue(SplitProperty); set => SetValue(SplitProperty, value); }
+    public bool Above { get => (bool)GetValue(AboveProperty); set => SetValue(AboveProperty, value); }
+
+    private (double Lo, double Hi) Range(IReadOnlyList<Bin> bins)
+    {
+        double lo = bins[0].Lower, hi = bins[^1].Upper;
+        if (Marker is { } m)
+        {
+            lo = Math.Min(lo, m);
+            hi = Math.Max(hi, m);
+        }
+        if (hi - lo < 1e-12)
+        {
+            lo -= 0.5;
+            hi += 0.5;
+        }
+        return (lo, hi);
+    }
+
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        ArgumentNullException.ThrowIfNull(drawingContext);
+        var dc = drawingContext;
+        double w = ActualWidth - Left, h = ActualHeight - Bottom;
+        dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
+        if (Bins is not { Count: > 0 } bins || w <= 0 || h <= 0) return;
+        Cursor = Marker is null ? Cursors.Arrow : Cursors.SizeWE;
+        var (lo, hi) = Range(bins);
+        int max = Math.Max(1, bins.Max(b => b.Count));
+        var gridPen = new Pen(ChartColors.Grid, 1);
+        for (int i = 1; i <= 2; i++)
+        {
+            double y = h - ((h - 6) * i / 2);
+            dc.DrawLine(gridPen, new Point(Left, y), new Point(Left + w, y));
+            var t = ChartColors.Text((max * i / 2).ToString(CultureInfo.CurrentCulture), 10, ChartColors.Axis, this);
+            dc.DrawText(t, new Point(Left - t.Width - 5, y - (t.Height / 2)));
+        }
+        foreach (var b in bins)
+        {
+            double x0 = Left + ((b.Lower - lo) / (hi - lo) * w), x1 = Left + ((b.Upper - lo) / (hi - lo) * w);
+            if (bins.Count == 1)
+            {
+                x0 = Left + (w * 0.42);
+                x1 = Left + (w * 0.58);
+            }
+            double bh = (double)b.Count / max * (h - 6);
+            Brush fill = Bar;
+            if (Split && Marker is { } m)
+            {
+                double mid = (b.Lower + b.Upper) / 2;
+                fill = (Above ? mid >= m : mid < m) ? Positive : Negative;
+            }
+            dc.DrawRectangle(fill, null, new Rect(x0 + 0.5, h - bh, Math.Max(1, x1 - x0 - 1), bh));
+        }
+        dc.DrawLine(new Pen(ChartColors.Axis, 1), new Point(Left, h), new Point(Left + w, h));
+        foreach (double f in new[] { 0.0, 0.5, 1.0 })
+        {
+            var t = ChartColors.Text(MainViewModel.Fmt(lo + (f * (hi - lo))), 10, ChartColors.Axis, this);
+            dc.DrawText(t, new Point(Math.Clamp(Left + (f * w) - (t.Width / 2), Left, Left + w - t.Width), h + 3));
+        }
+        if (Marker is { } mk)
+        {
+            double x = Left + ((mk - lo) / (hi - lo) * w);
+            dc.DrawLine(new Pen(ChartColors.Accent, 2), new Point(x, 0), new Point(x, h));
+            dc.DrawEllipse(ChartColors.Accent, null, new Point(x, 5), 4.5, 4.5);
+            var t = ChartColors.Text(MainViewModel.Fmt(mk), 11, ChartColors.Accent, this);
+            dc.DrawText(t, new Point(x + t.Width + 8 < Left + w ? x + 7 : x - t.Width - 7, 10));
+        }
+    }
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        if (Marker is null || Bins is not { Count: > 0 }) return;
+        CaptureMouse();
+        Drag(e.GetPosition(this).X);
+        e.Handled = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        if (IsMouseCaptured) Drag(e.GetPosition(this).X);
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        ReleaseMouseCapture();
+        base.OnMouseLeftButtonUp(e);
+    }
+
+    private void Drag(double x)
+    {
+        if (Bins is not { Count: > 0 } bins) return;
+        var (lo, hi) = Range(bins);
+        double w = Math.Max(ActualWidth - Left, 1);
+        MarkerDragged?.Invoke(this, lo + (Math.Clamp(x - Left, 0, w) / w * (hi - lo)));
+    }
+}

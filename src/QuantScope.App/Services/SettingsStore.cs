@@ -20,6 +20,19 @@ public sealed class UserSettings
     /// <summary>最後に開いたフォルダー</summary>
     public string? LastFolder { get; set; }
 
+    /// <summary>最近開いた画像（新しい順、この PC の中だけに保存する）</summary>
+    public List<string> RecentFiles { get; set; } = [];
+
+    public const int MaxRecent = 8;
+
+    /// <summary>最近開いた画像の先頭に入れる（同じものは前へ移す）</summary>
+    public void AddRecent(string path)
+    {
+        RecentFiles.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        RecentFiles.Insert(0, path);
+        if (RecentFiles.Count > MaxRecent) RecentFiles.RemoveRange(MaxRecent, RecentFiles.Count - MaxRecent);
+    }
+
     public bool HasApiKey => !string.IsNullOrWhiteSpace(OpenAIApiKey);
 }
 
@@ -48,6 +61,7 @@ public sealed class SettingsStore
             var s = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new UserSettings();
             s.OpenAIApiKey = Unprotect(s.OpenAIApiKey);
             if (string.IsNullOrWhiteSpace(s.OpenAIModel)) s.OpenAIModel = ImageDescriber.DefaultModel;
+            s.RecentFiles ??= [];
             return s;
         }
         catch (Exception ex) when (ex is JsonException or CryptographicException or FormatException or IOException)
@@ -66,6 +80,7 @@ public sealed class SettingsStore
             OpenAIModel = settings.OpenAIModel,
             AiConsentAccepted = settings.AiConsentAccepted,
             LastFolder = settings.LastFolder,
+            RecentFiles = settings.RecentFiles.ToList(),
         };
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         string temp = FilePath + ".tmp";

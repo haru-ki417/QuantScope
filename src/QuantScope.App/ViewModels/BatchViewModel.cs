@@ -12,7 +12,7 @@ using QuantScope.Core.Rendering;
 namespace QuantScope.App.ViewModels;
 
 /// <summary>一括処理の 1 行</summary>
-public sealed record BatchRow(string File, string Count, string Fraction, string MeanArea, string Note, bool Failed);
+public sealed record BatchRow(string File, string Count, string Fraction, string MeanArea, string Positive, string Note, bool Failed);
 
 /// <summary>
 /// 一括処理: フォルダーの画像すべてに、今のレシピを同じようにかけて測り、CSV（と確認用の重ねた画像）を書き出す。
@@ -145,6 +145,7 @@ public sealed partial class BatchViewModel : ObservableObject
                     s?.Count.ToString("N0", c) ?? "",
                     s is null ? "" : s.AreaFraction.ToString("0.00", c) + "%",
                     s is null ? "" : MainViewModel.Fmt(s.MeanArea),
+                    s?.Positive is null ? "" : s.PositivePercent.ToString("0.0", c) + "%",
                     item.Error ?? "",
                     item.Result is null));
             }

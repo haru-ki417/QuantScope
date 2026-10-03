@@ -62,3 +62,30 @@ public sealed class StringEquals : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is true && parameter is string s ? s : Binding.DoNothing;
 }
+
+/// <summary>true なら "Selected"（左の列の「元の画像」「計測」の行の強調）</summary>
+public sealed class SelectedTag : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is true ? "Selected" : null;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
+}
+
+/// <summary>bool が ConverterParameter（"True" / "False"）と同じなら true（ラジオボタン用）</summary>
+public sealed class BoolIs : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is bool b && parameter is string s && b == bool.Parse(s);
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true && parameter is string s ? bool.Parse(s) : Binding.DoNothing;
+}
+
+/// <summary>陽性・陰性の文字（判定しないときは空）</summary>
+public sealed class PositiveText : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value switch { true => "陽性", false => "陰性", _ => "" };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
+}

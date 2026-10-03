@@ -117,7 +117,10 @@ public static class ImageIo
     }
 
     /// <summary>AI に送る PNG（長い辺を maxEdge 以下に縮める。付帯情報は入れない）</summary>
-    public static byte[] EncodeForAi(int width, int height, byte[] bgra, int maxEdge = 1024)
+    public static byte[] EncodeForAi(int width, int height, byte[] bgra, int maxEdge = 1024) => EncodePng(width, height, bgra, maxEdge);
+
+    /// <summary>PNG にする（長い辺を maxEdge 以下に縮める。付帯情報は入れない）</summary>
+    public static byte[] EncodePng(int width, int height, byte[] bgra, int maxEdge)
     {
         BitmapSource bmp = ToBitmap(width, height, bgra);
         double scale = Math.Min(1.0, (double)maxEdge / Math.Max(width, height));

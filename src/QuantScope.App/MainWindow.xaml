@@ -4,7 +4,7 @@
         xmlns:c="clr-namespace:QuantScope.App.Controls"
         xmlns:vm="clr-namespace:QuantScope.App.ViewModels"
         xmlns:core="clr-namespace:QuantScope.Core.Pipeline;assembly=QuantScope.Core"
-        Title="QuantScope — 画像から、数える・測る" Width="1560" Height="940" MinWidth="1200" MinHeight="720"
+        Title="QuantScope — 画像から、数える・測る" Width="1600" Height="960" MinWidth="1240" MinHeight="720"
         WindowStartupLocation="CenterScreen" Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="{StaticResource UiFont}" UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal" AllowDrop="True"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}" xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -15,6 +15,26 @@
         <c:NumberText x:Key="Num" />
         <c:EnumVisible x:Key="TabVisible" />
         <c:StringEquals x:Key="Unit" />
+        <c:SelectedTag x:Key="SelTag" />
+        <c:BoolIs x:Key="BoolIs" />
+        <c:PositiveText x:Key="PosText" />
+
+        <!-- 手順を足すメニューの区分 -->
+        <DataTemplate x:Key="StepGroupTemplate" DataType="{x:Type vm:StepGroup}">
+            <StackPanel Margin="4,4,4,8">
+                <TextBlock Text="{Binding Title}" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="10,4,0,2" />
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type core:StepDefinition}">
+                            <Button Style="{StaticResource MenuButton}" Padding="10,5" ToolTip="{Binding Summary}"
+                                    Command="{Binding DataContext.AddStepCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}">
+                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
 
         <!-- 数の入力欄: Enter で確定 -->
         <Style x:Key="CommitNumberBox" TargetType="TextBox" BasedOn="{StaticResource NumberBox}">
@@ -23,7 +43,7 @@
 
         <!-- 手順の値の入力 -->
         <DataTemplate x:Key="ParamTemplate" DataType="{x:Type vm:ParamViewModel}">
-            <StackPanel Margin="0,0,0,12">
+            <StackPanel Margin="0,0,0,12" Visibility="{Binding IsShown, Converter={StaticResource Visible}}">
                 <!-- 数 -->
                 <StackPanel Visibility="{Binding IsNumber, Converter={StaticResource Visible}}">
                     <DockPanel Margin="0,0,0,4">
@@ -56,10 +76,9 @@
             </StackPanel>
         </DataTemplate>
     </Window.Resources>
-
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="54" />
+            <RowDefinition Height="56" />
             <RowDefinition Height="*" />
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
@@ -75,15 +94,14 @@
                         <Ellipse Width="4" Height="4" Fill="{StaticResource MaskBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,11,0,0" />
                     </Grid>
                     <TextBlock Text="QuantScope" FontFamily="{StaticResource NumberFont}" FontSize="18" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <Border Width="1" Height="26" Background="{StaticResource LineBrush}" Margin="20,0,18,0" Visibility="{Binding HasImage, Converter={StaticResource Visible}}" />
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource IconButton}" Content="&#xE7A7;" Command="{Binding UndoCommand}" ToolTip="元に戻す (Ctrl+Z)" />
-                    <Button Style="{StaticResource IconButton}" Content="&#xE7A6;" Command="{Binding RedoCommand}" ToolTip="やり直す (Ctrl+Y)" Margin="0,0,14,0" />
-
                     <Grid Margin="0,0,8,0">
-                        <Button x:Name="SampleButton" Click="OnToggleSampleMenu" ToolTip="使い方を試せる、人工の見本の画像">
+                        <Button x:Name="SampleButton" Click="OnToggleSampleMenu" ToolTip="使い方を試せる、人工の見本の画像（手順の例つき）">
                             <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE7BE;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,7,0" />
                                 <TextBlock Text="見本" />
                                 <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" Margin="7,2,0,0" />
                             </StackPanel>
@@ -101,12 +119,51 @@
                             </Border>
                         </Popup>
                     </Grid>
-                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding OpenCommand}" Margin="0,0,8,0" ToolTip="画像を開く (Ctrl+O)。PNG・JPEG・TIFF（16bit も）・BMP・DICOM">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE8E5;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,7,0" />
-                            <TextBlock Text="開く" />
+
+                    <!-- 開く（押すとすぐファイルを選ぶ。▾ で最近の画像・レシピ） -->
+                    <Grid Margin="0,0,8,0">
+                        <StackPanel x:Name="OpenGroup" Orientation="Horizontal">
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding OpenCommand}" ToolTip="画像を開く (Ctrl+O)。PNG・JPEG・TIFF（16bit も）・BMP・DICOM" Padding="12,7,10,7">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8E5;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,7,0" />
+                                    <TextBlock Text="開く" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PrimaryButton}" Click="OnToggleOpenMenu" Padding="7,7" Margin="1,0,0,0" ToolTip="最近の画像・レシピを開く">
+                                <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9" VerticalAlignment="Center" />
+                            </Button>
                         </StackPanel>
-                    </Button>
+                        <Popup Closed="OnPopupClosed" IsOpen="{Binding IsOpenMenuOpen}" PlacementTarget="{Binding ElementName=OpenGroup}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" VerticalOffset="6">
+                            <Border Style="{StaticResource MenuCard}" Width="320" Margin="0,0,12,12">
+                                <StackPanel>
+                                    <Button Style="{StaticResource MenuButton}" Command="{Binding OpenFromMenuCommand}">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right" Text="Ctrl+O" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+                                            <TextBlock Text="画像を開く…" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource MenuButton}" Command="{Binding LoadRecipeFromMenuCommand}">
+                                        <StackPanel><TextBlock Text="レシピを開く…" /><TextBlock Text="保存した手順と計測の条件を読み込みます" Style="{StaticResource Muted}" /></StackPanel>
+                                    </Button>
+                                    <StackPanel Visibility="{Binding HasRecent, Converter={StaticResource Visible}}">
+                                        <Border Height="1" Background="{StaticResource LineBrush}" Margin="4,4" />
+                                        <TextBlock Text="最近の画像" Style="{StaticResource Label}" Margin="10,4,0,2" />
+                                        <ItemsControl ItemsSource="{Binding RecentFiles}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:NamedItem}">
+                                                    <Button Style="{StaticResource MenuButton}" ToolTip="{Binding Id}"
+                                                            Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}">
+                                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
                     <Grid Margin="0,0,8,0">
                         <Button x:Name="SaveButton" Click="OnToggleSaveMenu" IsEnabled="{Binding HasImage}">
                             <StackPanel Orientation="Horizontal">
@@ -116,13 +173,20 @@
                             </StackPanel>
                         </Button>
                         <Popup Closed="OnPopupClosed" IsOpen="{Binding IsSaveMenuOpen}" PlacementTarget="{Binding ElementName=SaveButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" VerticalOffset="6">
-                            <Border Style="{StaticResource MenuCard}" Width="290" Margin="0,0,12,12">
+                            <Border Style="{StaticResource MenuCard}" Width="320" Margin="0,0,12,12">
                                 <StackPanel>
-                                    <Button Style="{StaticResource MenuButton}" Command="{Binding SaveCsvCommand}" IsEnabled="{Binding HasAnalysis}">
-                                        <StackPanel><TextBlock Text="計測結果（CSV）" /><TextBlock Text="粒ごとの面積・形・明るさ。Excel で開けます" Style="{StaticResource Muted}" /></StackPanel>
+                                    <Button Style="{StaticResource MenuButton}" Command="{Binding SaveReportCommand}" IsEnabled="{Binding HasAnalysis}">
+                                        <StackPanel><TextBlock Text="解析レポート（HTML）" FontWeight="SemiBold" /><TextBlock Text="画像・手順と値・結果・分布を 1 つのファイルに。印刷して PDF にもできます" Style="{StaticResource Muted}" /></StackPanel>
                                     </Button>
+                                    <Button Style="{StaticResource MenuButton}" Command="{Binding SaveCsvCommand}" IsEnabled="{Binding HasAnalysis}">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right" Text="Ctrl+S" Style="{StaticResource Muted}" VerticalAlignment="Top" />
+                                            <StackPanel><TextBlock Text="計測結果（CSV）" /><TextBlock Text="粒ごとの面積・形・明るさ。Excel で開けます" Style="{StaticResource Muted}" /></StackPanel>
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{StaticResource LineBrush}" Margin="4,4" />
                                     <Button Style="{StaticResource MenuButton}" Command="{Binding SaveOverlayCommand}">
-                                        <StackPanel><TextBlock Text="重ねた画像（PNG）" /><TextBlock Text="画像に、選んだ対象を色で重ねたもの" Style="{StaticResource Muted}" /></StackPanel>
+                                        <StackPanel><TextBlock Text="重ねた画像（PNG）" /><TextBlock Text="画像に、数えた粒を色で重ねたもの" Style="{StaticResource Muted}" /></StackPanel>
                                     </Button>
                                     <Button Style="{StaticResource MenuButton}" Command="{Binding SaveViewCommand}">
                                         <StackPanel><TextBlock Text="表示している画像（PNG）" /><TextBlock Text="処理したあとの画像" Style="{StaticResource Muted}" /></StackPanel>
@@ -132,125 +196,69 @@
                                     </Button>
                                     <Border Height="1" Background="{StaticResource LineBrush}" Margin="4,4" />
                                     <Button Style="{StaticResource MenuButton}" Command="{Binding SaveRecipeCommand}">
-                                        <StackPanel><TextBlock Text="レシピ（手順）を保存" /><TextBlock Text="同じ解析を、あとでほかの画像にもかけられます" Style="{StaticResource Muted}" /></StackPanel>
+                                        <StackPanel><TextBlock Text="レシピ（手順と計測の条件）" /><TextBlock Text="同じ解析を、あとでほかの画像にもかけられます" Style="{StaticResource Muted}" /></StackPanel>
                                     </Button>
                                 </StackPanel>
                             </Border>
                         </Popup>
                     </Grid>
-                    <Button Command="{Binding LoadRecipeCommand}" Margin="0,0,8,0" ToolTip="保存したレシピ（手順）を読み込む">レシピを開く</Button>
-                    <Button Command="{Binding OpenBatchCommand}" Margin="0,0,16,0" ToolTip="フォルダーの画像すべてに、同じ手順をかけて測る">
+                    <Button Command="{Binding OpenBatchCommand}" Margin="0,0,14,0" ToolTip="フォルダーの画像すべてに、同じ手順をかけて測る">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,7,0" />
                             <TextBlock Text="一括処理" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource IconButton}" Content="&#xE713;" Command="{Binding OpenSettingsCommand}" ToolTip="設定（AI の API キーなど）" Width="32" Height="32" />
+                    <Button Style="{StaticResource IconButton}" Content="&#xE713;" Command="{Binding OpenSettingsCommand}" ToolTip="設定（AI の API キーなど）" Width="32" Height="32" FontSize="14" />
                 </StackPanel>
 
-                <StackPanel VerticalAlignment="Center" Margin="32,0,20,0" Visibility="{Binding HasImage, Converter={StaticResource Visible}}">
+                <StackPanel VerticalAlignment="Center" Margin="0,0,20,0" Visibility="{Binding HasImage, Converter={StaticResource Visible}}">
                     <TextBlock Text="{Binding FileName}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding ImageDescription}" Style="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding ImageDescription}" Style="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
                 </StackPanel>
             </DockPanel>
         </Border>
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="330" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="392" />
+                <ColumnDefinition Width="304" MinWidth="260" MaxWidth="520" />
+                <ColumnDefinition Width="*" MinWidth="420" />
+                <ColumnDefinition Width="396" MinWidth="340" MaxWidth="720" />
             </Grid.ColumnDefinitions>
 
-            <!-- ================================================================ 左: 手順 -->
+            <!-- ================================================================ 左: 手順と計測 -->
             <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" MinHeight="140" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="1.25*" />
-                    </Grid.RowDefinitions>
-
-                    <Border Style="{StaticResource Section}" Padding="16,14,16,10">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="16,12,10,12" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
                         <StackPanel>
                             <DockPanel>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE74D;" Command="{Binding ClearStepsCommand}" ToolTip="手順をすべて消す" />
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE7A7;" Command="{Binding UndoCommand}" ToolTip="元に戻す (Ctrl+Z)" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE7A6;" Command="{Binding RedoCommand}" ToolTip="やり直す (Ctrl+Y)" />
+                                    <Border Width="1" Height="16" Background="{StaticResource LineBrush}" Margin="4,0" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE8E5;" Command="{Binding LoadRecipeCommand}" ToolTip="レシピを開く" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE74E;" Command="{Binding SaveRecipeCommand}" ToolTip="レシピを保存" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE74D;" Command="{Binding ClearStepsCommand}" ToolTip="手順をすべて消す" />
+                                </StackPanel>
                                 <TextBlock Text="手順（レシピ）" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
                             </DockPanel>
-                            <TextBox Text="{Binding RecipeName, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0" ToolTip="レシピの名前（保存するときのファイル名にもなります）" />
+                            <TextBox Text="{Binding RecipeName, UpdateSourceTrigger=PropertyChanged}" Margin="0,10,6,0" ToolTip="レシピの名前（保存するときのファイル名にもなります）" />
                         </StackPanel>
                     </Border>
 
-                    <!-- 手順の一覧 -->
-                    <DockPanel Grid.Row="1" Margin="10,8,10,0">
-                        <Button DockPanel.Dock="Top" Style="{StaticResource MenuButton}" Command="{Binding ShowInputCommand}" Margin="0,0,0,2"
-                                Background="Transparent" ToolTip="処理する前の画像を見る">
+                    <!-- 流れ: 元の画像 → 手順 → 計測 -->
+                    <StackPanel DockPanel.Dock="Top" Margin="10,8,10,8">
+                        <Button Style="{StaticResource PipelineRow}" Command="{Binding ShowInputCommand}" ToolTip="処理する前の画像を見る"
+                                Tag="{Binding IsInputRowSelected, Converter={StaticResource SelTag}}">
                             <DockPanel>
-                                <Border Width="22" Height="22" CornerRadius="11" BorderBrush="{StaticResource FaintBrush}" BorderThickness="1" Margin="0,0,10,0">
+                                <Border Width="22" Height="22" CornerRadius="11" BorderBrush="{StaticResource FaintBrush}" BorderThickness="1" Margin="0,0,10,0" Background="{StaticResource PanelBrush}">
                                     <TextBlock Text="&#xEB9F;" FontFamily="{StaticResource IconFont}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
                                 </Border>
                                 <TextBlock Text="元の画像" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
                             </DockPanel>
                         </Button>
-                        <Grid DockPanel.Dock="Bottom" Margin="0,6,0,8">
-                            <Button x:Name="AddStepButton" Click="OnToggleAddMenu" IsEnabled="True" HorizontalAlignment="Stretch">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource AccentBrush}" />
-                                    <TextBlock Text="手順を足す" />
-                                </StackPanel>
-                            </Button>
-                            <Popup Closed="OnPopupClosed" IsOpen="{Binding IsAddMenuOpen}" PlacementTarget="{Binding ElementName=AddStepButton}" Placement="Right" StaysOpen="False" AllowsTransparency="True" HorizontalOffset="8">
-                                <Border Style="{StaticResource MenuCard}" Width="540" Margin="0,0,14,14">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition />
-                                            <ColumnDefinition />
-                                        </Grid.ColumnDefinitions>
-                                        <ItemsControl ItemsSource="{Binding StepGroupsLeft}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type vm:StepGroup}">
-                                                <StackPanel Margin="4,4,4,8">
-                                                    <TextBlock Text="{Binding Title}" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="10,4,0,2" />
-                                                    <ItemsControl ItemsSource="{Binding Items}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate DataType="{x:Type core:StepDefinition}">
-                                                                <Button Style="{StaticResource MenuButton}" Padding="10,5" ToolTip="{Binding Summary}"
-                                                                        Command="{Binding DataContext.AddStepCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}">
-                                                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                                </Button>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <ItemsControl Grid.Column="1" ItemsSource="{Binding StepGroupsRight}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type vm:StepGroup}">
-                                                <StackPanel Margin="4,4,4,8">
-                                                    <TextBlock Text="{Binding Title}" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="10,4,0,2" />
-                                                    <ItemsControl ItemsSource="{Binding Items}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate DataType="{x:Type core:StepDefinition}">
-                                                                <Button Style="{StaticResource MenuButton}" Padding="10,5" ToolTip="{Binding Summary}"
-                                                                        Command="{Binding DataContext.AddStepCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}">
-                                                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                                </Button>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </Grid>
-                                </Border>
-                            </Popup>
-                        </Grid>
                         <Grid>
-                            <ListBox x:Name="StepList" Style="{StaticResource PlainList}" ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}" KeyDown="OnStepListKeyDown" SelectionChanged="OnStepSelectionChanged">
+                            <ListBox x:Name="StepList" Style="{StaticResource PlainList}" ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}" MaxHeight="360"
+                                     KeyDown="OnStepListKeyDown" SelectionChanged="OnStepSelectionChanged">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="{x:Type vm:StepViewModel}">
                                         <Grid x:Name="Row" Background="Transparent">
@@ -299,59 +307,127 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
-                            <TextBlock Style="{StaticResource Muted}" Margin="14,10" TextAlignment="Left"
+                            <TextBlock Style="{StaticResource Muted}" Margin="14,6,14,8" TextAlignment="Left"
                                        Visibility="{Binding Steps.Count, Converter={StaticResource Visible}, ConverterParameter=Invert}"
-                                       Text="まだ手順がありません。下の「手順を足す」から、ぼかし・二値化などを順に足していきます。見本を開くと、手順の例が入ります。" />
+                                       Text="まだ手順がありません。「手順を足す」から、ぼかし・二値化などを順に足していきます。見本を開くと、手順の例が入ります。" />
                         </Grid>
-                    </DockPanel>
-
-                    <Border Grid.Row="2" Height="1" Background="{StaticResource LineBrush}" />
-
-                    <!-- 選んだ手順の値・計測の条件 -->
-                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <Border Style="{StaticResource Section}" Visibility="{Binding HasSelectedStep, Converter={StaticResource Visible}}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding SelectedStep.Category}" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,2" />
-                                    <TextBlock Text="{Binding SelectedStep.Title}" Style="{StaticResource SectionTitle}" FontSize="14" Margin="0,0,0,4" />
-                                    <TextBlock Text="{Binding SelectedDefinition.Summary}" Style="{StaticResource Muted}" Margin="0,0,0,12" />
-                                    <ItemsControl ItemsSource="{Binding SelectedStep.Parameters}" ItemTemplate="{StaticResource ParamTemplate}" />
-                                    <Button Command="{Binding UseRoiForCropCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"
-                                            Visibility="{Binding SelectedStep.IsCrop, Converter={StaticResource Visible}}" IsEnabled="{Binding HasRoi}"
-                                            ToolTip="画像の上で「四角」の道具で範囲を選んでから押します">選んだ範囲にする</Button>
-                                    <TextBlock Style="{StaticResource Muted}" Visibility="{Binding SelectedStep.IsThreshold, Converter={StaticResource Visible}}"
-                                               Text="右の「分布」で、しきい値の線をドラッグして決めることもできます。" />
-                                    <TextBlock Style="{StaticResource Muted}" Visibility="{Binding SelectedStep.HasParameters, Converter={StaticResource Visible}, ConverterParameter=Invert}"
-                                               Text="この手順には、決める値はありません。" />
-                                    <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="-8,6,0,0" Command="{Binding SetTabCommand}" CommandParameter="{x:Static vm:RightTab.Explain}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE82D;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBlock Text="しくみを読む" />
-                                        </StackPanel>
-                                    </Button>
+                        <Grid Margin="0,4,0,4">
+                            <Button x:Name="AddStepButton" Click="OnToggleAddMenu" HorizontalAlignment="Stretch" Background="Transparent" BorderBrush="{StaticResource LineBrush}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource AccentBrush}" />
+                                    <TextBlock Text="手順を足す" />
                                 </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource Section}" BorderThickness="0">
+                            </Button>
+                            <Popup Closed="OnPopupClosed" IsOpen="{Binding IsAddMenuOpen}" PlacementTarget="{Binding ElementName=AddStepButton}" Placement="Right" StaysOpen="False" AllowsTransparency="True" HorizontalOffset="8">
+                                <Border Style="{StaticResource MenuCard}" Width="540" Margin="0,0,14,14">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition />
+                                            <ColumnDefinition />
+                                        </Grid.ColumnDefinitions>
+                                        <ItemsControl ItemsSource="{Binding StepGroupsLeft}" ItemTemplate="{StaticResource StepGroupTemplate}" />
+                                        <ItemsControl Grid.Column="1" ItemsSource="{Binding StepGroupsRight}" ItemTemplate="{StaticResource StepGroupTemplate}" />
+                                    </Grid>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <Button Style="{StaticResource PipelineRow}" Command="{Binding ShowFinalCommand}" ToolTip="計測の条件を決め、結果を見る"
+                                Tag="{Binding IsShowingResult, Converter={StaticResource SelTag}}">
+                            <DockPanel>
+                                <Border x:Name="MeasureDot" Width="22" Height="22" CornerRadius="11" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" Margin="0,0,10,0" VerticalAlignment="Top">
+                                    <TextBlock Text="&#xE9D2;" FontFamily="{StaticResource IconFont}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}" />
+                                </Border>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding SummaryCount}" FontFamily="{StaticResource NumberFont}" FontSize="13" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Top" Margin="6,1,4,0" />
                                 <StackPanel>
-                                    <TextBlock Text="計測の条件" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="計測" FontSize="13" />
+                                    <TextBlock Text="{Binding MeasureSummary}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource LineBrush}" />
+
+                    <!-- 選んだ手順の値、または計測の条件 -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="16,14,16,18">
+                            <!-- 手順の値 -->
+                            <StackPanel Visibility="{Binding HasSelectedStep, Converter={StaticResource Visible}}">
+                                <TextBlock Text="{Binding SelectedStep.Category}" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,2" />
+                                <TextBlock Text="{Binding SelectedStep.Title}" Style="{StaticResource SectionTitle}" FontSize="14" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding SelectedDefinition.Summary}" Style="{StaticResource Muted}" Margin="0,0,0,14" />
+                                <ItemsControl ItemsSource="{Binding SelectedStep.Parameters}" ItemTemplate="{StaticResource ParamTemplate}" />
+                                <Button Command="{Binding UseRoiForCropCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"
+                                        Visibility="{Binding SelectedStep.IsCrop, Converter={StaticResource Visible}}" IsEnabled="{Binding HasRoi}"
+                                        ToolTip="画像の上で「四角」の道具で範囲を選んでから押します">選んだ範囲にする</Button>
+                                <TextBlock Style="{StaticResource Muted}" Visibility="{Binding SelectedStep.IsThreshold, Converter={StaticResource Visible}}"
+                                           Text="右の「分布」で、しきい値の線をドラッグして決めることもできます。" />
+                                <TextBlock Style="{StaticResource Muted}" Visibility="{Binding SelectedStep.HasParameters, Converter={StaticResource Visible}, ConverterParameter=Invert}"
+                                           Text="この手順には、決める値はありません。" />
+                                <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="-8,6,0,0" Command="{Binding SetTabCommand}" CommandParameter="{x:Static vm:RightTab.Explain}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE82D;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="しくみを読む" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- 計測の条件 -->
+                            <StackPanel Visibility="{Binding HasSelectedStep, Converter={StaticResource Visible}, ConverterParameter=Invert}">
+                                <TextBlock Text="計測" Style="{StaticResource Label}" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,2" />
+                                <TextBlock Text="計測の条件" Style="{StaticResource SectionTitle}" FontSize="14" Margin="0,0,0,4" />
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,14" Text="二値化で選んだ粒を、ここで決めた条件で数えて測ります。条件はレシピと一緒に保存されます。" />
+
+                                <TextBlock Text="数える粒の面積" Style="{StaticResource Label}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBox Style="{StaticResource CommitNumberBox}" Width="84" Text="{Binding MinArea, UpdateSourceTrigger=LostFocus}" ToolTip="これより小さい粒は数えない" />
+                                    <TextBlock Text="〜" VerticalAlignment="Center" Margin="8,0" Foreground="{StaticResource MutedBrush}" />
+                                    <TextBox Style="{StaticResource CommitNumberBox}" Width="84" Text="{Binding MaxArea, UpdateSourceTrigger=LostFocus}" ToolTip="これより大きい粒は数えない（0 は上限なし）" />
+                                    <TextBlock Text="{Binding Calibration.AreaUnit}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <TextBlock Text="下限より小さい粒・上限より大きい粒は数えません（上限 0 は上限なし）。" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,12" />
+                                <CheckBox IsChecked="{Binding ExcludeEdges}" Content="ふち（画像・範囲）に触れた粒を数えない" Margin="0,0,0,16" />
+
+                                <TextBlock Text="明るさとして測るもの" Style="{StaticResource Label}" />
+                                <ComboBox ItemsSource="{x:Static vm:MainViewModel.ChannelTitles}" SelectedIndex="{Binding ChannelIndex}" Margin="0,0,0,6" />
+                                <TextBlock Style="{StaticResource Muted}" Foreground="{StaticResource WarnBrush}" Margin="0,0,0,6" Visibility="{Binding ChannelNeedsColor, Converter={StaticResource Visible}}"
+                                           Text="白黒の画像なので、明るさで測ります（色や染色の量は、カラーの画像で測れます）。" />
+                                <CheckBox IsChecked="{Binding IntensityFromOriginal}" Content="処理する前の画像で測る（おすすめ）" Margin="0,4,0,16"
+                                          ToolTip="外すと、最後の手順のあとの画像で測ります（ぼかしなどで値が変わります）" />
+
+                                <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,0,0,14" />
+                                <CheckBox IsChecked="{Binding Classify}" Margin="0,0,0,4">
+                                    <TextBlock Text="陽性・陰性に分ける" FontWeight="SemiBold" />
+                                </CheckBox>
+                                <TextBlock Style="{StaticResource Muted}" Margin="24,0,0,10" Text="粒ごとの平均（上で選んだもの）がしきい値を超えた粒を陽性とし、陽性率を出します。" />
+                                <StackPanel Visibility="{Binding Classify, Converter={StaticResource Visible}}" Margin="0,0,0,8">
                                     <DockPanel Margin="0,0,0,8">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Calibration.AreaUnit}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="6,0,0,0" Width="30" />
-                                        <TextBox DockPanel.Dock="Right" Style="{StaticResource CommitNumberBox}" Text="{Binding MinArea, UpdateSourceTrigger=LostFocus}" />
-                                        <TextBlock Text="面積の下限（これより小さい粒は数えない）" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0" TextWrapping="Wrap" />
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="自動で決める" Command="{Binding AutoPositiveThresholdCommand}" Margin="6,0,-8,0"
+                                                ToolTip="粒の平均の分布を 2 組に分ける値（大津の方法）" />
+                                        <TextBlock Text="しきい値" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                        <TextBox Style="{StaticResource CommitNumberBox}" Width="90" HorizontalAlignment="Left" Text="{Binding PositiveThreshold, UpdateSourceTrigger=LostFocus}" />
                                     </DockPanel>
-                                    <DockPanel Margin="0,0,0,10">
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Calibration.AreaUnit}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="6,0,0,0" Width="30" />
-                                        <TextBox DockPanel.Dock="Right" Style="{StaticResource CommitNumberBox}" Text="{Binding MaxArea, UpdateSourceTrigger=LostFocus}" />
-                                        <TextBlock Text="面積の上限（0 は上限なし）" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0" />
-                                    </DockPanel>
-                                    <CheckBox IsChecked="{Binding ExcludeEdges}" Content="ふち（画像・範囲）に触れた粒を数えない" Margin="0,0,0,8" />
-                                    <CheckBox IsChecked="{Binding IntensityFromOriginal}" Content="明るさは、処理する前の画像で測る" />
+                                    <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Left" Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton Style="{StaticResource Segment}" GroupName="posdir" Content="以上を陽性" IsChecked="{Binding PositiveAbove, Converter={StaticResource BoolIs}, ConverterParameter=True}" />
+                                            <RadioButton Style="{StaticResource Segment}" GroupName="posdir" Content="未満を陽性" IsChecked="{Binding PositiveAbove, Converter={StaticResource BoolIs}, ConverterParameter=False}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <c:BinChart x:Name="PositiveChart" Height="96" Bins="{Binding IntensityBins}" Marker="{Binding PositiveThreshold}" Split="True" Above="{Binding PositiveAbove}" />
+                                    <TextBlock Style="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" Text="{Binding IntensityHeader, StringFormat=粒ごとの{0}の分布。線をドラッグしてしきい値を決められます。}" />
                                 </StackPanel>
-                            </Border>
+
+                                <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,8,0,14" />
+                                <DockPanel Margin="0,0,0,4">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="すべて戻す" Command="{Binding RestoreExcludedCommand}" IsEnabled="{Binding HasExcluded}" Margin="0,-4,-8,0" />
+                                    <TextBlock Text="手で除いた粒" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Body}" Text="{Binding ExcludedText}" Visibility="{Binding HasExcluded, Converter={StaticResource Visible}}" Margin="0,0,0,4" />
+                                <TextBlock Style="{StaticResource Muted}" Text="画像の上の道具「粒を除く」（X）で、ゴミや誤って選ばれた粒をクリックすると、数から外せます。もう一度クリックすると戻ります。除いた数はレポートに残ります。" />
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
-                </Grid>
+                </DockPanel>
             </Border>
 
             <!-- ================================================================ 中: 画像 -->
@@ -362,37 +438,39 @@
                 </Grid.RowDefinitions>
 
                 <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="10,7">
-                    <DockPanel>
-                        <Border Style="{StaticResource SegmentHost}" DockPanel.Dock="Left" IsEnabled="{Binding HasImage}">
+                    <DockPanel IsEnabled="{Binding HasImage}">
+                        <Border Style="{StaticResource SegmentHost}" DockPanel.Dock="Left" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="移動・粒を選ぶ（右ドラッグでもいつでも移動できます）"
+                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="移動・粒を選ぶ (V)。右ドラッグでもいつでも移動できます"
                                              IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Pan}">
                                     <TextBlock Text="&#xE7C9;" FontFamily="{StaticResource IconFont}" />
                                 </RadioButton>
-                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="四角の範囲（Shift で正方形）" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Rectangle}">
+                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="四角の範囲 (R)。Shift で正方形" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Rectangle}">
                                     <TextBlock Text="&#xE739;" FontFamily="{StaticResource IconFont}" />
                                 </RadioButton>
-                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="楕円の範囲（Shift で円）" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Ellipse}">
+                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="楕円の範囲 (E)。Shift で円" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Ellipse}">
                                     <TextBlock Text="&#xEA3A;" FontFamily="{StaticResource IconFont}" />
                                 </RadioButton>
-                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="多角形の範囲（クリックで頂点、最初の点かダブルクリックで閉じる）" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Polygon}">
+                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="多角形の範囲 (P)。クリックで頂点、最初の点かダブルクリックで閉じる" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Polygon}">
                                     <TextBlock Text="&#xE76D;" FontFamily="{StaticResource IconFont}" />
                                 </RadioButton>
-                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="線（長さ・明るさの変化・縮尺。Shift で 45° ごと）" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Line}">
+                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="線 (L)。長さ・明るさの変化・縮尺。Shift で 45° ごと" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Line}">
                                     <TextBlock Text="&#xE8C2;" FontFamily="{StaticResource IconFont}" />
+                                </RadioButton>
+                                <Border Width="1" Margin="3,6" Background="{StaticResource LineBrush}" />
+                                <RadioButton Style="{StaticResource Segment}" GroupName="tool" ToolTip="粒を除く (X)。クリックした粒を数から外す（もう一度で戻す）" IsChecked="{Binding Tool, Converter={StaticResource Is}, ConverterParameter=Exclude}">
+                                    <TextBlock Text="&#xE894;" FontFamily="{StaticResource IconFont}" />
                                 </RadioButton>
                             </StackPanel>
                         </Border>
 
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding HasImage}">
-                            <CheckBox IsChecked="{Binding ShowOverlay}" Content="重ねる" Margin="0,0,12,0" ToolTip="選んだ対象（マスク）を色で重ねる" />
-                            <CheckBox IsChecked="{Binding ShowNumbers}" Content="番号" Margin="0,0,12,0" />
-                            <CheckBox IsChecked="{Binding ColorPerObject}" Content="色分け" Margin="0,0,12,0" ToolTip="粒ごとに違う色で（くっついた粒が分かれたかを見やすい）" />
-                            <Slider Width="70" Minimum="0.15" Maximum="1" Value="{Binding OverlayOpacity}" VerticalAlignment="Center" ToolTip="重ねる色の濃さ" Margin="0,0,4,0" />
 
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                            <CheckBox IsChecked="{Binding ShowOverlay}" Content="重ねる" Margin="0,4,12,4" ToolTip="選んだ対象（マスク）を色で重ねる" />
+                            <CheckBox IsChecked="{Binding ShowNumbers}" Content="番号" Margin="0,4,12,4" />
+                            <CheckBox IsChecked="{Binding ColorPerObject}" Content="色分け" Margin="0,4,12,4" ToolTip="粒ごとに違う色で（くっついた粒が分かれたかを見やすい）" />
+                            <Slider Width="60" Minimum="0.15" Maximum="1" Value="{Binding OverlayOpacity}" VerticalAlignment="Center" ToolTip="重ねる色の濃さ" />
                         </StackPanel>
-
-
                     </DockPanel>
                 </Border>
 
@@ -400,14 +478,14 @@
                     <c:ImageView x:Name="Viewer" Source="{Binding DisplayImage}" Overlay="{Binding OverlayImage}" ShowOverlay="{Binding ShowOverlay}"
                                  OverlayOpacity="{Binding OverlayOpacity}" Particles="{Binding DisplayParticles}" ShowNumbers="{Binding ShowNumbers}"
                                  SelectedParticle="{Binding SelectedParticle}" Roi="{Binding Roi}" Line="{Binding Line}" Matches="{Binding Matches}"
-                                 Tool="{Binding Tool}" Calibration="{Binding Calibration}" />
+                                 Tool="{Binding Tool}" Calibration="{Binding Calibration}" CompareSource="{Binding CompareImage}" Comparing="{Binding IsComparing}" />
 
                     <ProgressBar Height="2" VerticalAlignment="Top" IsIndeterminate="True" Background="Transparent"
                                  Visibility="{Binding IsBusy, Converter={StaticResource Visible}}" />
 
                     <!-- 画像がないとき -->
                     <Border Visibility="{Binding IsEmpty, Converter={StaticResource Visible}}" Background="{StaticResource BaseBrush}">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="520">
                             <Border Width="72" Height="72" CornerRadius="36" BorderBrush="{StaticResource AccentBrush}" BorderThickness="3" HorizontalAlignment="Center">
                                 <Grid>
                                     <Ellipse Width="16" Height="16" Fill="{StaticResource MaskBrush}" Margin="-14,-12,0,0" />
@@ -415,24 +493,31 @@
                                     <Ellipse Width="8" Height="8" Fill="{StaticResource MaskBrush}" Margin="0,26,6,0" />
                                 </Grid>
                             </Border>
-                            <TextBlock Text="画像から、数える・測る。" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,22,0,8" />
-                            <TextBlock Style="{StaticResource Muted}" FontSize="13" TextAlignment="Center" LineHeight="21"
-                                       Text="顕微鏡の画像や医用画像を、ぼかし・二値化・形を整える…と手順を積み重ねて解析し、粒の数・面積・形・明るさを測ります。手順はレシピとして保存でき、フォルダーの画像に一括でかけられます。" />
-                            <TextBlock Text="画像をここにドロップするか、見本から始めてください" Style="{StaticResource Label}" HorizontalAlignment="Center" Margin="0,26,0,10" />
+                            <TextBlock Text="画像から、数える・測る。" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,22,0,10" />
+                            <TextBlock Style="{StaticResource Muted}" FontSize="13" TextAlignment="Center" LineHeight="22" Margin="10,0"
+                                       Text="顕微鏡の画像や医用画像を、手順を積み重ねて解析し、粒の数・面積・形・明るさを測ります。手順はレシピとして保存でき、フォルダーの画像に一括でかけられます。" />
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding OpenCommand}" HorizontalAlignment="Center" Margin="0,26,0,0" Padding="26,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8E5;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="画像を開く" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="ここに画像やフォルダーをドロップしても開けます" Style="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,10,0,0" />
+                            <Border Height="1" Background="{StaticResource LineBrush}" Margin="40,26,40,18" />
+                            <TextBlock Text="見本で試す（手順の例つき）" Style="{StaticResource Label}" HorizontalAlignment="Center" Margin="0,0,0,8" />
                             <ItemsControl ItemsSource="{x:Static vm:MainViewModel.Samples}" HorizontalAlignment="Center">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <WrapPanel HorizontalAlignment="Center" />
+                                        <UniformGrid Columns="2" />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type vm:NamedItem}">
-                                        <Button Content="{Binding Title}" Margin="4" Padding="14,9"
+                                        <Button Content="{Binding Title}" Margin="4" Padding="14,9" HorizontalAlignment="Stretch"
                                                 Command="{Binding DataContext.OpenSampleCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding OpenCommand}" HorizontalAlignment="Center" Margin="0,14,0,0" Padding="22,9" Content="画像を開く" />
                         </StackPanel>
                     </Border>
 
@@ -446,14 +531,24 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 下の中央: マウスの位置の値 -->
-                    <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,14" Background="#C0101418" CornerRadius="5" Padding="9,5"
-                            Visibility="{Binding HoverText, Converter={StaticResource Visible}}" IsHitTestVisible="False">
-                        <TextBlock Text="{Binding HoverText}" FontFamily="{StaticResource NumberFont}" FontSize="12" />
+                    <!-- 右上: 陽性・陰性の凡例 -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0" Background="#C0101418" CornerRadius="5" Padding="10,6"
+                            Visibility="{Binding ShowClassLegend, Converter={StaticResource Visible}}" IsHitTestVisible="False">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Fill="{StaticResource MaskBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="陽性" FontSize="12" Margin="6,0,14,0" VerticalAlignment="Center" />
+                            <Ellipse Width="9" Height="9" Fill="#4CC9F0" VerticalAlignment="Center" />
+                            <TextBlock Text="陰性" FontSize="12" Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
                     </Border>
 
-                    <!-- 右下: 拡大 -->
+
+                    <!-- 右下: 色の付け方・拡大 -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,12" Visibility="{Binding HasImage, Converter={StaticResource Visible}}">
+                        <ToggleButton Style="{StaticResource ToolToggle}" IsChecked="{Binding IsComparing}" Background="#C0101418" Margin="0,0,8,0" Padding="0"
+                                      ToolTip="元の画像と今の表示を、左右に並べて比べる (C)。境目の線をドラッグして動かせます">
+                            <TextBlock Text="比べる" />
+                        </ToggleButton>
                         <Border Style="{StaticResource SegmentHost}" Background="#C0101418" Margin="0,0,8,0" ToolTip="白黒の画像の色の付け方（表示だけ。計測の値は変わりません）">
                                 <StackPanel Orientation="Horizontal">
                                     <RadioButton Style="{StaticResource Segment}" GroupName="lut" Content="白黒" IsChecked="{Binding ColorMap, Converter={StaticResource Is}, ConverterParameter=Gray}" />
@@ -466,7 +561,7 @@
                     </StackPanel>
 
                     <!-- 縮尺の設定 -->
-                    <Border Visibility="{Binding IsCalibrating, Converter={StaticResource Visible}}" Style="{StaticResource MenuCard}" Width="380" Padding="18"
+                    <Border Visibility="{Binding IsCalibrating, Converter={StaticResource Visible}}" Style="{StaticResource MenuCard}" Width="400" Padding="18"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
                         <StackPanel>
                             <TextBlock Text="縮尺を決める" Style="{StaticResource SectionTitle}" FontSize="15" />
@@ -509,7 +604,11 @@
                 </Grid>
             </Grid>
 
-            <!-- ================================================================ 右: 結果・分布・線・解説・AI -->
+            <!-- 左右の列の幅は、境目をドラッグして変えられる -->
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Left" Width="5" ResizeBehavior="PreviousAndCurrent" Background="Transparent" Cursor="SizeWE" Panel.ZIndex="10" />
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Right" Width="5" ResizeBehavior="CurrentAndNext" Background="Transparent" Cursor="SizeWE" Panel.ZIndex="10" />
+
+            <!-- ================================================================ 右: 結果・分布・線・しくみ・AI -->
             <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,0">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Padding="12,10" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
@@ -532,29 +631,32 @@
                                     <Border Background="{StaticResource RaisedBrush}" CornerRadius="7" Margin="4" Padding="12,9">
                                         <StackPanel>
                                             <TextBlock Text="数" Style="{StaticResource Label}" Margin="0,0,0,2" />
-                                            <TextBlock Text="{Binding SummaryCount}" FontFamily="{StaticResource NumberFont}" FontSize="24" Foreground="{StaticResource AccentBrush}" />
+                                            <TextBlock Text="{Binding SummaryCount}" FontFamily="{StaticResource NumberFont}" FontSize="26" Foreground="{StaticResource AccentBrush}" />
                                         </StackPanel>
                                     </Border>
                                     <Border Background="{StaticResource RaisedBrush}" CornerRadius="7" Margin="4" Padding="12,9">
                                         <StackPanel>
                                             <TextBlock Text="占有率（面積の割合）" Style="{StaticResource Label}" Margin="0,0,0,2" />
-                                            <TextBlock Text="{Binding SummaryFraction}" FontFamily="{StaticResource NumberFont}" FontSize="24" />
+                                            <TextBlock Text="{Binding SummaryFraction}" FontFamily="{StaticResource NumberFont}" FontSize="26" />
                                         </StackPanel>
                                     </Border>
                                     <Border Background="{StaticResource RaisedBrush}" CornerRadius="7" Margin="4" Padding="12,9">
                                         <StackPanel>
                                             <TextBlock Text="平均の面積" Style="{StaticResource Label}" Margin="0,0,0,2" />
-                                            <TextBlock Text="{Binding SummaryMeanArea}" FontFamily="{StaticResource NumberFont}" FontSize="18" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding SummaryMeanArea}" FontFamily="{StaticResource NumberFont}" FontSize="19" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </Border>
                                     <Border Background="{StaticResource RaisedBrush}" CornerRadius="7" Margin="4" Padding="12,9">
                                         <StackPanel>
-                                            <TextBlock Text="平均の円形度" Style="{StaticResource Label}" Margin="0,0,0,2" />
-                                            <TextBlock Text="{Binding SummaryCircularity}" FontFamily="{StaticResource NumberFont}" FontSize="18" />
+                                            <TextBlock Text="{Binding Kpi4Label}" Style="{StaticResource Label}" Margin="0,0,0,2" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Kpi4Value}" FontFamily="{StaticResource NumberFont}" FontSize="19" />
+                                                <TextBlock Text="{Binding Kpi4Sub}" Style="{StaticResource Muted}" FontFamily="{StaticResource NumberFont}" VerticalAlignment="Bottom" Margin="8,0,0,2" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </UniformGrid>
-                                <TextBlock Text="{Binding SummaryDetail}" Style="{StaticResource Muted}" Margin="2,8,0,0" FontFamily="{StaticResource UiFont}" />
+                                <TextBlock Text="{Binding SummaryDetail}" Style="{StaticResource Muted}" Margin="2,8,0,0" />
                                 <TextBlock Text="{Binding AnalysisHint}" Style="{StaticResource Muted}" Foreground="{StaticResource WarnBrush}" Margin="2,8,0,0"
                                            Visibility="{Binding AnalysisHint, Converter={StaticResource Visible}}" />
 
@@ -574,42 +676,139 @@
                                     </StackPanel>
                                 </Border>
 
+                                <!-- 選んだ粒 -->
+                                <Border Background="{StaticResource RaisedBrush}" CornerRadius="7" Padding="12,8,8,10" Margin="0,12,0,0" Visibility="{Binding SelectedParticleRows, Converter={StaticResource Visible}}">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,6">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <Button Style="{StaticResource GhostButton}" Click="OnCenterSelected" ToolTip="画像の中央に表示">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#xE8B3;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                                                        <TextBlock Text="表示" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Style="{StaticResource GhostButton}" Command="{Binding ExcludeSelectedCommand}" ToolTip="この粒を数から外す (Delete)">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#xE894;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                                                        <TextBlock Text="除く" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Style="{StaticResource IconButton}" Content="&#xE711;" Click="OnClearSelection" ToolTip="選ぶのをやめる" />
+                                            </StackPanel>
+                                            <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{StaticResource AccentBrush}">
+                                                <Run Text="粒 " /><Run Text="{Binding SelectedParticle.Id, Mode=OneWay}" FontFamily="{StaticResource NumberFont}" />
+                                            </TextBlock>
+                                        </DockPanel>
+                                        <ItemsControl ItemsSource="{Binding SelectedParticleRows}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Columns="2" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:DetailRow}">
+                                                    <DockPanel Margin="0,1,12,1">
+                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding Value}" FontFamily="{StaticResource NumberFont}" FontSize="12" />
+                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,0,6,0" />
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
                                 <DockPanel Margin="0,14,0,6">
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Command="{Binding SaveCsvCommand}" IsEnabled="{Binding HasAnalysis}" Margin="0,0,-8,0">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBlock Text="CSV" />
-                                        </StackPanel>
-                                    </Button>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <Button Style="{StaticResource GhostButton}" Command="{Binding CopyTableCommand}" IsEnabled="{Binding HasAnalysis}" ToolTip="すべての行と列をコピー（Excel などに貼り付けられます）">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                <TextBlock Text="コピー" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource GhostButton}" Command="{Binding SaveCsvCommand}" IsEnabled="{Binding HasAnalysis}" Margin="0,0,-8,0" ToolTip="CSV に保存 (Ctrl+S)">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                <TextBlock Text="CSV" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
                                     <TextBlock Text="粒ごとの値" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
                                 </DockPanel>
                             </StackPanel>
                             <DataGrid x:Name="ParticleGrid" Style="{StaticResource ResultGrid}" ItemsSource="{Binding Particles}" SelectedItem="{Binding SelectedParticle}"
-                                      SelectionChanged="OnParticleSelectionChanged">
+                                      SelectionChanged="OnParticleSelectionChanged" PreviewKeyDown="OnParticleGridKeyDown">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="番号" Binding="{Binding Id}" Width="44" />
-                                    <DataGridTextColumn Header="面積" Binding="{Binding Area, Converter={StaticResource Num}}" Width="*" />
-                                    <DataGridTextColumn Header="周囲長" Binding="{Binding Perimeter, Converter={StaticResource Num}}" Width="*" />
-                                    <DataGridTextColumn Header="円形度" Binding="{Binding Circularity, StringFormat={}{0:0.000}}" Width="*" />
-                                    <DataGridTextColumn Header="フェレ径" Binding="{Binding Feret, Converter={StaticResource Num}}" Width="*" />
-                                    <DataGridTextColumn Header="平均の明るさ" Binding="{Binding MeanIntensity, Converter={StaticResource Num}}" Width="1.2*" />
+                                    <DataGridTextColumn Header="番号" Binding="{Binding Id}" Width="46" />
+                                    <DataGridTextColumn x:Name="AreaColumn" Header="面積" Binding="{Binding Area, Converter={StaticResource Num}}" SortMemberPath="Area" Width="*" />
+                                    <DataGridTextColumn Header="円形度" Binding="{Binding Circularity, StringFormat={}{0:0.000}}" SortMemberPath="Circularity" Width="*" />
+                                    <DataGridTextColumn x:Name="FeretColumn" Header="フェレ径" Binding="{Binding Feret, Converter={StaticResource Num}}" SortMemberPath="Feret" Width="*" />
+                                    <DataGridTextColumn x:Name="IntensityColumn" Header="平均" Binding="{Binding MeanIntensity, Converter={StaticResource Num}}" SortMemberPath="MeanIntensity" Width="1.2*" />
+                                    <DataGridTemplateColumn x:Name="PositiveColumn" Header="判定" Width="48" SortMemberPath="Positive" Visibility="Collapsed">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock x:Name="T" Text="{Binding Positive, Converter={StaticResource PosText}}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" FontFamily="{StaticResource UiFont}" />
+                                                <DataTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding Positive}" Value="True">
+                                                        <Setter TargetName="T" Property="Foreground" Value="{StaticResource MaskBrush}" />
+                                                        <Setter TargetName="T" Property="FontWeight" Value="SemiBold" />
+                                                    </DataTrigger>
+                                                </DataTemplate.Triggers>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>
 
                         <!-- 分布 -->
-                        <StackPanel Visibility="{Binding RightTab, Converter={StaticResource TabVisible}, ConverterParameter=Histogram}" Margin="16,14">
-                            <TextBlock Text="明るさの分布（ヒストグラム）" Style="{StaticResource SectionTitle}" />
-                            <TextBlock Text="表示している画像の明るさごとの画素の数です。濃い部分が実際の数、薄い部分は数の少ない明るさも見えるように対数にしたものです。" Style="{StaticResource Muted}" Margin="0,0,0,12" />
-                            <c:HistogramChart x:Name="Histo" Height="180" Histogram="{Binding Histogram}" Marker="{Binding HistogramMarker}" />
-                            <TextBlock Text="{Binding HistogramText}" Style="{StaticResource Body}" FontFamily="{StaticResource UiFont}" Margin="0,12,0,0" />
-                            <Border Background="{StaticResource AccentSoftBrush}" CornerRadius="7" Padding="12,10" Margin="0,16,0,0"
-                                    Visibility="{Binding HistogramMarker, Converter={StaticResource Visible}}">
-                                <TextBlock Style="{StaticResource Body}" Text="緑の線が、いま選んでいる二値化のしきい値です。線をドラッグすると、しきい値を自分で決められます（決め方は「手動」に変わります）。マゼンタの側が「対象」です。" />
-                            </Border>
-                            <TextBlock Style="{StaticResource Muted}" Margin="0,16,0,0" Visibility="{Binding HistogramMarker, Converter={StaticResource Visible}, ConverterParameter=Invert}"
-                                       Text="左の手順で「二値化（しきい値）」を選ぶと、ここにしきい値の線が出ます。範囲を選ぶと、範囲の中だけの分布になります。" />
-                        </StackPanel>
+                        <ScrollViewer Visibility="{Binding RightTab, Converter={StaticResource TabVisible}, ConverterParameter=Histogram}" VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="16,14">
+                                <Border Style="{StaticResource SegmentHost}" HorizontalAlignment="Left" Margin="0,0,0,14">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="dist" Content="画素の明るさ" IsChecked="{Binding DistributionMode, Converter={StaticResource Is}, ConverterParameter=Pixels}" />
+                                        <RadioButton Style="{StaticResource Segment}" GroupName="dist" Content="粒の値" IsChecked="{Binding DistributionMode, Converter={StaticResource Is}, ConverterParameter=Particles}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Visibility="{Binding DistributionMode, Converter={StaticResource TabVisible}, ConverterParameter=Pixels}">
+                                    <TextBlock Text="明るさの分布（ヒストグラム）" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="表示している画像の明るさごとの画素の数です。濃い部分が実際の数、薄い部分は数の少ない明るさも見えるように対数にしたものです。" Style="{StaticResource Muted}" Margin="0,0,0,12" />
+                                    <c:HistogramChart x:Name="Histo" Height="180" Histogram="{Binding Histogram}" Marker="{Binding HistogramMarker}" />
+                                    <TextBlock Text="{Binding HistogramText}" Style="{StaticResource Body}" Margin="0,12,0,0" />
+                                    <Border Background="{StaticResource AccentSoftBrush}" CornerRadius="7" Padding="12,10" Margin="0,16,0,0"
+                                            Visibility="{Binding HistogramMarker, Converter={StaticResource Visible}}">
+                                        <TextBlock Style="{StaticResource Body}" Text="緑の線が、いま選んでいる二値化のしきい値です。線をドラッグすると、しきい値を自分で決められます（決め方は「手動」に変わります）。マゼンタの側が「対象」です。" />
+                                    </Border>
+                                    <TextBlock Style="{StaticResource Muted}" Margin="0,16,0,0" Visibility="{Binding HistogramMarker, Converter={StaticResource Visible}, ConverterParameter=Invert}"
+                                               Text="左の手順で「二値化（しきい値）」を選ぶと、ここにしきい値の線が出ます。範囲を選ぶと、範囲の中だけの分布になります。" />
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding DistributionMode, Converter={StaticResource TabVisible}, ConverterParameter=Particles}">
+                                    <TextBlock Text="粒の値の分布" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="計測した粒の値が、どのように散らばっているかを見ます。" Style="{StaticResource Muted}" Margin="0,0,0,10" />
+                                    <ComboBox ItemsSource="{Binding FeatureItems}" SelectedItem="{Binding SelectedFeature}" DisplayMemberPath="Label" Margin="0,0,0,12" />
+                                    <Grid Visibility="{Binding HasAnalysis, Converter={StaticResource Visible}}">
+                                        <StackPanel>
+                                            <c:BinChart x:Name="FeatureChart" Height="180" Bins="{Binding FeatureBins}" Marker="{Binding FeatureMarker}" Split="{Binding FeatureSplit}" Above="{Binding PositiveAbove}" />
+                                            <ItemsControl ItemsSource="{Binding FeatureStats}" Margin="0,12,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:DetailRow}">
+                                                        <DockPanel Margin="0,2">
+                                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Value}" FontFamily="{StaticResource NumberFont}" FontSize="12.5" />
+                                                            <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" />
+                                                        </DockPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Style="{StaticResource Muted}" Margin="0,12,0,0" Visibility="{Binding FeatureSplit, Converter={StaticResource Visible}}"
+                                                       Text="マゼンタが陽性、水色が陰性の粒です。線をドラッグすると、陽性のしきい値を変えられます。" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Style="{StaticResource Muted}" Visibility="{Binding HasAnalysis, Converter={StaticResource Visible}, ConverterParameter=Invert}"
+                                               Text="手順に「二値化」などを入れて粒を数えると、ここに分布が出ます。" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
 
                         <!-- 線 -->
                         <StackPanel Visibility="{Binding RightTab, Converter={StaticResource TabVisible}, ConverterParameter=Profile}" Margin="16,14">
@@ -650,13 +849,13 @@
                                                 <Setter Property="LineHeight" Value="21" />
                                             </Style>
                                         </ItemsControl.Resources>
-                                        <TextBlock Text="① 整える: 背景のむらを補正し、軽くぼかしてノイズを減らす（フィルター）" />
+                                        <TextBlock Text="① 整える: 背景のむらを補正し、軽くぼかしてノイズを減らす。染色の画像は「染色を分ける」で染料ごとに分ける" />
                                         <TextBlock Text="② 選ぶ: しきい値や色で、対象と背景を分ける（二値化）" />
-                                        <TextBlock Text="③ 直す: 穴を埋め、くっついた粒を分け、ゴミを消す（マスクを整える）" />
-                                        <TextBlock Text="④ 測る: 粒ごとに面積・形・明るさを測る（右の「結果」）" />
-                                        <TextBlock Text="⑤ くり返す: 手順をレシピとして保存し、ほかの画像にも同じようにかける（一括処理）" />
+                                        <TextBlock Text="③ 直す: 穴を埋め、くっついた粒を分け、大きさや形でゴミを除く（マスクを整える）" />
+                                        <TextBlock Text="④ 測る: 粒ごとに面積・形・明るさを測る。必要なら陽性・陰性に分け、誤って選ばれた粒は手で除く（左の「計測」）" />
+                                        <TextBlock Text="⑤ 残す・くり返す: レポートやレシピとして保存し、ほかの画像にも同じようにかける（一括処理）" />
                                     </ItemsControl>
-                                    <TextBlock Style="{StaticResource Muted}" Margin="0,8,0,0" Text="計測の数値は、処理する前の画像の明るさと、縮尺（1 px の長さ）をもとに計算します。縮尺は下のバーの「縮尺」か、線の道具から決められます。" />
+                                    <TextBlock Style="{StaticResource Muted}" Margin="0,8,0,0" Text="計測の数値は、処理する前の画像の明るさと、縮尺（1 px の長さ）をもとに計算します。縮尺は下のバーの右端か、線の道具から決められます。" />
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
@@ -700,6 +899,8 @@
                         <TextBlock Text="{Binding CalibrationText}" FontSize="11.5" />
                     </StackPanel>
                 </Button>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding HoverText}" FontFamily="{StaticResource NumberFont}" FontSize="11.5" Foreground="{StaticResource TextBrush}"
+                           VerticalAlignment="Center" Margin="16,0,16,0" />
                 <TextBlock Text="{Binding Status}" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
             </DockPanel>
         </Border>

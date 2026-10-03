@@ -27,6 +27,11 @@ public sealed partial class ParamViewModel : ObservableObject
     public string? Help => Def.Help;
     public bool IsNumber => Def.Kind == ParamKind.Number;
     public bool IsChoice => Def.Kind == ParamKind.Choice;
+
+    /// <summary>いま使われる値か（たとえば、しきい値は決め方が「手動」のときだけ）</summary>
+    public bool IsShown => Def.IsUsed(_owner.Step);
+
+    internal void RefreshShown() => OnPropertyChanged(nameof(IsShown));
     public double Minimum { get; }
     public double Maximum { get; }
 
@@ -164,7 +169,11 @@ public sealed partial class StepViewModel : ObservableObject
 
     public ParamViewModel? Param(string key) => Parameters.FirstOrDefault(p => p.Def.Key == key);
 
-    internal void NotifyChanged(ParamViewModel p) => _changed(this, p);
+    internal void NotifyChanged(ParamViewModel p)
+    {
+        _changed(this, p);
+        foreach (var q in Parameters) q.RefreshShown();
+    }
 
     public void SetOutcome(StepOutcome? o)
     {

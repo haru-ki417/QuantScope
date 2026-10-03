@@ -22,3 +22,8 @@ obj/
 [Pp]ublish/
 TestResults/
 snapshots/
+
+# 確認用の画面（PC のフォルダーの場所が写るので公開しない）
+docs/screenshots/check-*
+docs/screenshots/report.html
+docs/screenshots/snapshots.log
