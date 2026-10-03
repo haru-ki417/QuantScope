@@ -1,0 +1,29 @@
+<Window x:Class="QuantScope.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="設定" Width="520" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PanelBrush}" Foreground="{StaticResource TextBrush}" FontFamily="{StaticResource UiFont}" UseLayoutRounding="True">
+    <Border Background="{StaticResource PanelBrush}" Padding="22,18">
+    <StackPanel>
+        <TextBlock Text="AI（OpenAI）" Style="{StaticResource SectionTitle}" FontSize="15" />
+        <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,14"
+                   Text="画像を説明してもらう機能に使います。キーは OpenAI のサイトで作れます（使った分だけ料金がかかります）。キーはこの PC の、この Windows のユーザーだけが読めるように暗号化して保存し、アプリの外には送りません（OpenAI に送るときの認証にだけ使います）。" />
+        <TextBlock Text="API キー" Style="{StaticResource Label}" />
+        <PasswordBox x:Name="KeyBox" />
+        <TextBlock x:Name="KeyState" Style="{StaticResource Muted}" Margin="0,5,0,0" />
+        <TextBlock Text="モデル（画像に対応したもの）" Style="{StaticResource Label}" Margin="0,14,0,5" />
+        <TextBox x:Name="ModelBox" />
+        <CheckBox x:Name="ConsentBox" Content="AI に送る内容の説明を、次も表示する" Margin="0,14,0,0" />
+
+        <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,20,0,16" />
+        <TextBlock Text="記録" Style="{StaticResource SectionTitle}" />
+        <TextBlock x:Name="PathText" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button Content="キーを消す" Click="OnClearKey" Margin="0,0,8,0" />
+            <Button Content="やめる" IsCancel="True" Margin="0,0,8,0" />
+            <Button Style="{StaticResource PrimaryButton}" Content="保存" IsDefault="True" Click="OnSave" Padding="20,7" />
+        </StackPanel>
+    </StackPanel>
+    </Border>
+</Window>

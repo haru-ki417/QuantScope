@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>QuantScope.App</RootNamespace>
+    <AssemblyName>QuantScope</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\QuantScope.ico</ApplicationIcon>
+    <!-- CA1822: 画面とのひも付けに使うプロパティはインスタンスのままにする -->
+    <NoWarn>$(NoWarn);CA1001;CA1515;CA1822</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- 圧縮された DICOM（JPEG・JPEG 2000 など）を展開する -->
+    <PackageReference Include="fo-dicom.Codecs" Version="5.16.7" />
+    <!-- API キーを Windows のユーザーごとに暗号化して保存する（DPAPI） -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QuantScope.Core\QuantScope.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\QuantScope.ico" />
+  </ItemGroup>
+
+</Project>

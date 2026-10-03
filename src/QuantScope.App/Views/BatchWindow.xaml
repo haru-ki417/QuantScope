@@ -1,0 +1,80 @@
+<Window x:Class="QuantScope.App.Views.BatchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:QuantScope.App.Controls"
+        xmlns:vm="clr-namespace:QuantScope.App.ViewModels"
+        Title="一括処理" Width="820" Height="640" MinWidth="640" MinHeight="480" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PanelBrush}" Foreground="{StaticResource TextBrush}" FontFamily="{StaticResource UiFont}" UseLayoutRounding="True">
+    <Window.Resources>
+        <c:Visible x:Key="Visible" />
+    </Window.Resources>
+    <Border Background="{StaticResource PanelBrush}" Padding="22,18">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="フォルダーの画像に、同じ手順をかけて測る" Style="{StaticResource SectionTitle}" FontSize="15" />
+            <TextBlock Style="{StaticResource Muted}" Text="{Binding RecipeText, StringFormat=使うレシピ: {0}}" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Muted}" Foreground="{StaticResource WarnBrush}" Margin="0,0,0,4"
+                       Visibility="{Binding RecipeHasSegmentation, Converter={StaticResource Visible}, ConverterParameter=Invert}"
+                       Text="このレシピには二値化の手順がないため、測れません。先にメインの画面で手順を作ってください。" />
+
+            <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="画像のフォルダー" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0" />
+                <TextBox Grid.Column="1" Text="{Binding InputFolder, Mode=OneWay}" IsReadOnly="True" Margin="0,0,8,0" />
+                <Button Grid.Column="2" Content="選ぶ" Command="{Binding PickInputCommand}" />
+                <TextBlock Grid.Row="1" Text="書き出し先" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding OutputFolder, Mode=OneWay}" IsReadOnly="True" Margin="0,8,8,0" />
+                <Button Grid.Row="1" Grid.Column="2" Content="選ぶ" Command="{Binding PickOutputCommand}" Margin="0,8,0,0" />
+            </Grid>
+            <StackPanel Orientation="Horizontal" Margin="110,10,0,0">
+                <CheckBox IsChecked="{Binding IncludeSubfolders}" Content="中のフォルダーも含める" Margin="0,0,18,0" />
+                <CheckBox IsChecked="{Binding SaveOverlays}" Content="確かめ用に、重ねた画像も保存する" />
+            </StackPanel>
+            <TextBlock Text="{Binding FilesText}" Style="{StaticResource Body}" Margin="110,10,0,0" />
+
+            <DockPanel Margin="0,16,0,8">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="止める" Command="{Binding CancelCommand}" Margin="0,0,8,0" Visibility="{Binding IsRunning, Converter={StaticResource Visible}}" />
+                    <Button Content="書き出し先を開く" Command="{Binding OpenOutputCommand}" Margin="0,0,8,0" Visibility="{Binding IsDone, Converter={StaticResource Visible}}" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="始める" Command="{Binding RunCommand}" Padding="22,7" />
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}" Margin="0,0,0,6" />
+                    <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </DockPanel>
+        </StackPanel>
+
+        <DataGrid Style="{StaticResource ResultGrid}" ItemsSource="{Binding Rows}" FontFamily="{StaticResource UiFont}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ファイル" Binding="{Binding File}" Width="2*" CellStyle="{StaticResource TextCell}">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="数" Binding="{Binding Count}" Width="70" />
+                <DataGridTextColumn Header="占有率" Binding="{Binding Fraction}" Width="80" />
+                <DataGridTextColumn Header="平均の面積" Binding="{Binding MeanArea}" Width="90" />
+                <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="2*" CellStyle="{StaticResource TextCell}">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource WarnBrush}" />
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+    </Border>
+</Window>

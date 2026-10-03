@@ -54,8 +54,8 @@ public static class BatchProcessor
             var cal = recipe.Calibration ?? img.Calibration ?? Calibration.Pixels;
             var run = PipelineRunner.Run(img.Raster, cal, recipe.Steps, null, cancel);
             var result = PipelineRunner.Analyze(run.Final, recipe.Measure);
-            if (result is null) return new BatchItemResult(name, null, "マスクがありません（レシピに二値化の手順を入れてください）");
             var warn = run.Outcomes.Select((o, k) => (o, k)).Where(t => t.o.Warning is not null).Select(t => $"手順 {t.k + 1}: {t.o.Warning}").FirstOrDefault();
+            if (result is null) return new BatchItemResult(name, null, warn ?? "対象を選ぶ手順（二値化など）がありません");
             return new BatchItemResult(name, result, warn);
         }
         catch (OperationCanceledException)
