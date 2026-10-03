@@ -1,0 +1,42 @@
+# GitHub でリリース（タグ v1.2.3 など）を公開すると、Windows 用の配布物
+# （.NET の入っていない PC でも動く zip）を作って、そのリリースに添付する。
+name: Release
+
+on:
+  release:
+    types: [ published ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test --solution QuantScope.slnx --configuration Release
+
+      - name: Publish (self-contained, win-x64)
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          dotnet publish src/QuantScope.App -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+            -p:Version=$version -p:DebugType=none -o publish/QuantScope
+          Copy-Item LICENSE, THIRD_PARTY_NOTICES.md publish/QuantScope/
+          Compress-Archive -Path publish/QuantScope/* -DestinationPath "QuantScope-$version-win-x64.zip"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem QuantScope-*.zip).FullName
+          gh release upload "${{ github.ref_name }}" $zip --clobber
