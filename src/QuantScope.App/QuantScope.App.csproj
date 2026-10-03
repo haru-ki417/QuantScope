@@ -16,8 +16,6 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- 圧縮された DICOM（JPEG・JPEG 2000 など）を展開する -->
     <PackageReference Include="fo-dicom.Codecs" Version="5.16.7" />
-    <!-- API キーを Windows のユーザーごとに暗号化して保存する（DPAPI） -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
