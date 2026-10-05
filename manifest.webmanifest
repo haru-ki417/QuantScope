@@ -1,0 +1,16 @@
+{
+  "name": "QuantScope — 画像から、数える・測る",
+  "short_name": "QuantScope",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111619",
+  "theme_color": "#111619",
+  "lang": "ja",
+  "icons": [
+    { "src": "icons/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "icons/icon-512.png", "type": "image/png", "sizes": "512x512" },
+    { "src": "icons/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>QuantScope — 画像から、数える・測る</title>
+    <meta name="description" content="顕微鏡の画像や医用画像を、手順を積み重ねて解析し、粒の数・面積・形・明るさを測るアプリ。画像はブラウザーの中だけで処理します。" />
+    <meta name="theme-color" content="#111619" />
+    <base href="/QuantScope/" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script type="importmap">{
+  "imports": {
+    "./_framework/blazor.webassembly.js": "./_framework/blazor.webassembly.w3qd1tpl0e.js",
+    "./_framework/dotnet.js": "./_framework/dotnet.egby1rqyik.js",
+    "./_framework/dotnet.native.js": "./_framework/dotnet.native.lbljugpk4p.js",
+    "./_framework/dotnet.runtime.js": "./_framework/dotnet.runtime.v06hirbjsv.js"
+  },
+  "scopes": {},
+  "integrity": {
+    "./_framework/blazor.webassembly.js": "sha256-lDXsDYFgm62F+YUvxES7IOTCXYpiHpU3uR45YdC6mq4=",
+    "./_framework/blazor.webassembly.w3qd1tpl0e.js": "sha256-lDXsDYFgm62F+YUvxES7IOTCXYpiHpU3uR45YdC6mq4=",
+    "./_framework/dotnet.egby1rqyik.js": "sha256-goTQ3l1MuMWtrXLYArcSCTA7HFniA4OWSyDPRv5e8D4=",
+    "./_framework/dotnet.js": "sha256-goTQ3l1MuMWtrXLYArcSCTA7HFniA4OWSyDPRv5e8D4=",
+    "./_framework/dotnet.native.js": "sha256-T19ZehQsTuu1o4pnUP1qf14v2InolAE4hc2CSb1y7QY=",
+    "./_framework/dotnet.native.lbljugpk4p.js": "sha256-T19ZehQsTuu1o4pnUP1qf14v2InolAE4hc2CSb1y7QY=",
+    "./_framework/dotnet.runtime.js": "sha256-QbnqrZGHtGq7wudS17/AYEPpH9JkphrsyVllD6JHmds=",
+    "./_framework/dotnet.runtime.v06hirbjsv.js": "sha256-QbnqrZGHtGq7wudS17/AYEPpH9JkphrsyVllD6JHmds="
+  }
+}</script>
+</head>
+<body>
+    <div id="app">
+        <div class="boot">
+            <svg class="boot-logo" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="11" cy="11" r="8.5" fill="none" stroke="#45D19A" stroke-width="3" />
+                <line x1="18" y1="18" x2="25.5" y2="25.5" stroke="#45D19A" stroke-width="3.5" stroke-linecap="round" />
+                <circle cx="9" cy="9" r="3" fill="#FF5FAA" /><circle cx="14" cy="13" r="2" fill="#FF5FAA" />
+            </svg>
+            <div class="boot-name">QuantScope</div>
+            <div class="boot-bar"><span></span></div>
+            <div class="boot-text">読み込んでいます… <span class="boot-pct"></span></div>
+            <noscript><p>このアプリを使うには JavaScript を有効にしてください。</p></noscript>
+        </div>
+    </div>
+    <div id="blazor-error-ui" role="alert">
+        問題が起きました。<a href="" class="reload">読み込み直す</a>
+        <a class="dismiss" aria-label="閉じる">✕</a>
+    </div>
+    <script src="_framework/blazor.webassembly.w3qd1tpl0e.js" autostart="false"></script>
+    <script src="js/boot.js"></script>
+</body>
+</html>
